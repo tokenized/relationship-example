@@ -1,0 +1,17 @@
+
+*.exe
+*.test
+*.prof
+*.log
+
+Thumbs.db
+
+conf/*.env
+conf/*.json
+
+tmp
+log
+json
+
+# IDEs
+.idea/
