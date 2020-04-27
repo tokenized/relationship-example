@@ -6,8 +6,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tokenized/relationship-test/internal/platform/config"
-	"github.com/tokenized/relationship-test/internal/wallet"
+	"github.com/tokenized/relationship-example/internal/platform/config"
+	"github.com/tokenized/relationship-example/internal/platform/db"
+	"github.com/tokenized/relationship-example/internal/wallet"
 
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
 	"github.com/tokenized/smart-contract/pkg/inspector"
@@ -21,6 +22,7 @@ import (
 
 type Node struct {
 	cfg         *config.Config
+	masterDB    *db.DB
 	wallet      *wallet.Wallet
 	rpc         *rpcnode.RPCNode
 	spy         *spynode.Node
@@ -31,16 +33,19 @@ type Node struct {
 	isInSync    atomic.Value
 }
 
-func NewNode(cfg *config.Config, wallet *wallet.Wallet, rpc *rpcnode.RPCNode, spy *spynode.Node) (*Node, error) {
+func NewNode(cfg *config.Config, masterDB *db.DB, wallet *wallet.Wallet, rpc *rpcnode.RPCNode,
+	spy *spynode.Node) (*Node, error) {
 	result := &Node{
-		cfg:    cfg,
-		wallet: wallet,
-		rpc:    rpc,
-		spy:    spy,
-		txs:    make(map[bitcoin.Hash32]*wire.MsgTx),
+		cfg:      cfg,
+		masterDB: masterDB,
+		wallet:   wallet,
+		rpc:      rpc,
+		spy:      spy,
+		txs:      make(map[bitcoin.Hash32]*wire.MsgTx),
 	}
 
 	result.stop.Store(false)
+	spy.RegisterListener(result)
 
 	return result, nil
 }
@@ -54,7 +59,8 @@ func (n *Node) Run(ctx context.Context) error {
 			break
 		}
 	}
-	return nil
+
+	return n.Save(ctx)
 }
 
 func (n *Node) Stop(ctx context.Context) error {
@@ -133,11 +139,27 @@ func (n *Node) ProcessTx(ctx context.Context, tx *wire.MsgTx) error {
 
 func (n *Node) BroadcastTx(ctx context.Context, tx *wire.MsgTx) error {
 	if err := n.spy.BroadcastTx(ctx, tx); err != nil {
-		return err
+		return errors.Wrap(err, "broadcast tx")
 	}
 
 	if err := n.spy.HandleTx(ctx, tx); err != nil {
-		return err
+		return errors.Wrap(err, "handle tx")
+	}
+
+	return nil
+}
+
+func (n *Node) Load(ctx context.Context) error {
+	if err := n.wallet.Load(ctx, n.masterDB); err != nil {
+		return errors.Wrap(err, "load wallet")
+	}
+
+	return nil
+}
+
+func (n *Node) Save(ctx context.Context) error {
+	if err := n.wallet.Save(ctx, n.masterDB); err != nil {
+		return errors.Wrap(err, "save wallet")
 	}
 
 	return nil

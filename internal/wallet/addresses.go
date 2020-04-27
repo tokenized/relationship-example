@@ -12,6 +12,12 @@ import (
 	"github.com/pkg/errors"
 )
 
+const (
+	KeyTypeExternal     = uint32(0)
+	KeyTypeInternal     = uint32(1)
+	KeyTypeRelationship = uint32(2)
+)
+
 var (
 	KeyTypeName = []string{
 		"External",
@@ -20,6 +26,56 @@ var (
 	}
 )
 
+// GetPaymentAddress returns an unused payment address.
+// TODO Add temporary marking so if multiple addresses are requested before the first one is
+//   actually used it will not be given out multiple times. --ce
+func (w *Wallet) GetPaymentAddress(ctx context.Context) (bitcoin.RawAddress, error) {
+	w.addressLock.Lock()
+	defer w.addressLock.Unlock()
+
+	for _, address := range w.addressesList[KeyTypeExternal] {
+		if address.Used == false {
+			return address.Address, nil
+		}
+	}
+
+	return bitcoin.RawAddress{}, errors.New("Not Available")
+}
+
+// GetRelationshipAddress returns an unused relationship address. These are P2PK so that the sender
+//   knows the public key when creating the transaction to enable encryption, as well as to ensure
+//   the public key is included in the initial transaction so it can be easily decrypted by the
+//   proper parties.
+// TODO Add temporary marking so if multiple addresses are requested before the first one is
+//   actually used it will not be given out multiple times. --ce
+func (w *Wallet) GetRelationshipAddress(ctx context.Context) (bitcoin.RawAddress, error) {
+	w.addressLock.Lock()
+	defer w.addressLock.Unlock()
+
+	for _, address := range w.addressesList[KeyTypeRelationship] {
+		if address.Used == false {
+			return address.Address, nil
+		}
+	}
+
+	return bitcoin.RawAddress{}, errors.New("Not Available")
+}
+
+func (w *Wallet) GetKey(ctx context.Context, t, i uint32) (bitcoin.Key, error) {
+	parentKey, err := w.walletKey.ChildKey(t)
+	if err != nil {
+		return bitcoin.Key{}, errors.Wrap(err, "parent key")
+	}
+
+	key, err := parentKey.ChildKey(i)
+	if err != nil {
+		return bitcoin.Key{}, errors.Wrap(err, "address key")
+	}
+
+	return key.Key(bitcoin.InvalidNet), nil
+}
+
+// FindAddress finds an address by type and index.
 func (w *Wallet) FindAddress(ctx context.Context, t, i uint32) *Address {
 	if t > 2 {
 		return nil
@@ -30,6 +86,7 @@ func (w *Wallet) FindAddress(ctx context.Context, t, i uint32) *Address {
 	return w.addressesList[t][i]
 }
 
+// FindAddressByAddress finds an address by the raw address.
 func (w *Wallet) FindAddressByAddress(ctx context.Context, ra bitcoin.RawAddress) (*Address, error) {
 	hashes, err := ra.Hashes()
 	if err != nil {
@@ -58,12 +115,15 @@ func (w *Wallet) MarkAddress(ctx context.Context, add *Address) error {
 		return nil // already used
 	}
 
+	logger.Info(ctx, "Mark address : %s %d %s", KeyTypeName[add.KeyType], add.KeyIndex,
+		bitcoin.NewAddressFromRawAddress(add.Address, w.cfg.Net).String())
+
 	w.addressLock.Lock()
 	defer w.addressLock.Unlock()
 
 	add.Used = true
 
-	if int(add.KeyIndex)+w.cfg.AddressGap > len(w.addressesList[add.KeyType]) {
+	if int(add.KeyIndex)+w.cfg.AddressGap >= len(w.addressesList[add.KeyType]) {
 		if err := w.ForwardScan(ctx, add.KeyType); err != nil {
 			return errors.Wrap(err, "forward scan")
 		}
@@ -90,6 +150,10 @@ func (w *Wallet) ForwardScan(ctx context.Context, t uint32) error {
 		}
 	}
 
+	if unusedCount >= w.cfg.AddressGap {
+		return nil
+	}
+
 	parentKey, err := w.walletKey.ChildKey(t)
 	if err != nil {
 		return errors.Wrap(err, "parent key")
@@ -102,9 +166,17 @@ func (w *Wallet) ForwardScan(ctx context.Context, t uint32) error {
 			return errors.Wrap(err, "address key")
 		}
 
-		ra, err := key.RawAddress()
-		if err != nil {
-			return errors.Wrap(err, "address")
+		var ra bitcoin.RawAddress
+		if t == KeyTypeRelationship {
+			ra, err = bitcoin.NewRawAddressPublicKey(key.PublicKey())
+			if err != nil {
+				return errors.Wrap(err, "address")
+			}
+		} else {
+			ra, err = key.RawAddress()
+			if err != nil {
+				return errors.Wrap(err, "address")
+			}
 		}
 
 		hashes, err := ra.Hashes()
@@ -123,9 +195,7 @@ func (w *Wallet) ForwardScan(ctx context.Context, t uint32) error {
 		}
 
 		for _, hash := range hashes {
-			if err := w.addMonitoredHash(ctx, hash); err != nil {
-				return errors.Wrap(err, "add hash")
-			}
+			w.hashes[hash] = ra
 			w.addressesMap[hash] = newAddress
 		}
 		w.addressesList[t] = append(w.addressesList[t], newAddress)

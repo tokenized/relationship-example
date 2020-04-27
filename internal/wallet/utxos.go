@@ -116,9 +116,6 @@ func (w *Wallet) ProcessUTXOs(ctx context.Context, tx *wire.MsgTx, isFinal bool)
 
 	// Add new UTXOs
 	for index, output := range tx.TxOut {
-		if output.Value == 0 {
-			continue
-		}
 
 		ra, err := bitcoin.RawAddressFromLockingScript(output.PkScript)
 		if err != nil {
@@ -134,26 +131,28 @@ func (w *Wallet) ProcessUTXOs(ctx context.Context, tx *wire.MsgTx, isFinal bool)
 			continue
 		}
 
-		// Add the UTXO
-		utxo := UTXO{
-			UTXO: bitcoin.UTXO{
-				Hash:          *tx.TxHash(),
-				Index:         uint32(index),
-				Value:         output.Value,
-				LockingScript: output.PkScript,
-			},
-			KeyType:  address.KeyType,
-			KeyIndex: address.KeyIndex,
-		}
+		if output.Value > 0 {
+			// Add the UTXO
+			utxo := UTXO{
+				UTXO: bitcoin.UTXO{
+					Hash:          *tx.TxHash(),
+					Index:         uint32(index),
+					Value:         output.Value,
+					LockingScript: output.PkScript,
+				},
+				KeyType:  address.KeyType,
+				KeyIndex: address.KeyIndex,
+			}
 
-		if err := w.CreateUTXO(ctx, utxo); err != nil {
-			return errors.Wrap(err, "create utxo")
-		}
+			if err := w.CreateUTXO(ctx, utxo); err != nil {
+				return errors.Wrap(err, "create utxo")
+			}
 
-		logger.Info(ctx, "Created UTXO (%d) : [%s %d %s] %s %d", utxo.UTXO.Value,
-			KeyTypeName[address.KeyType], address.KeyIndex,
-			bitcoin.NewAddressFromRawAddress(ra, w.cfg.Net).String(), utxo.UTXO.Hash.String(),
-			utxo.UTXO.Index)
+			logger.Info(ctx, "Created UTXO (%d) : [%s %d %s] %s %d", utxo.UTXO.Value,
+				KeyTypeName[address.KeyType], address.KeyIndex,
+				bitcoin.NewAddressFromRawAddress(ra, w.cfg.Net).String(), utxo.UTXO.Hash.String(),
+				utxo.UTXO.Index)
+		}
 
 		if err := w.MarkAddress(ctx, address); err != nil {
 			return errors.Wrap(err, "mark address")

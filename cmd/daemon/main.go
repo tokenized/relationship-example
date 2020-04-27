@@ -14,12 +14,13 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/tokenized/relationship-test/internal/node"
-	"github.com/tokenized/relationship-test/internal/platform/config"
-	"github.com/tokenized/relationship-test/internal/wallet"
+	"github.com/tokenized/relationship-example/internal/node"
+	"github.com/tokenized/relationship-example/internal/platform/config"
+	"github.com/tokenized/relationship-example/internal/platform/db"
+	"github.com/tokenized/relationship-example/internal/wallet"
+
 	"github.com/tokenized/specification/dist/golang/actions"
 
-	"github.com/tokenized/smart-contract/pkg/bitcoin"
 	"github.com/tokenized/smart-contract/pkg/logger"
 	"github.com/tokenized/smart-contract/pkg/rpcnode"
 	"github.com/tokenized/smart-contract/pkg/spynode"
@@ -98,6 +99,19 @@ func main() {
 	logger.Info(ctx, "Config : %s", string(cfgJSON))
 
 	// -------------------------------------------------------------------------
+	// Data
+
+	masterDB, err := db.New(&db.StorageConfig{
+		Bucket:     cfg.Storage.Bucket,
+		Root:       cfg.Storage.Root,
+		MaxRetries: cfg.AWS.MaxRetries,
+		RetryDelay: cfg.AWS.RetryDelay,
+	})
+	if err != nil {
+		logger.Fatal(ctx, "Failed to initialize storage : %s", err)
+	}
+
+	// -------------------------------------------------------------------------
 	// SPY Node
 
 	spyStorageConfig := storage.NewConfig(cfg.NodeStorage.Bucket, cfg.NodeStorage.Root)
@@ -110,12 +124,7 @@ func main() {
 		spyStorage = storage.NewS3Storage(spyStorageConfig)
 	}
 
-	net := bitcoin.NetworkFromString(cfg.Bitcoin.Network)
-	if net == bitcoin.InvalidNet {
-		logger.Fatal(ctx, "Invalid bitcoin network configured : %s", cfg.Bitcoin.Network)
-	}
-
-	spyConfig, err := data.NewConfig(net, cfg.SpyNode.Address, cfg.SpyNode.UserAgent,
+	spyConfig, err := data.NewConfig(config.Net, cfg.SpyNode.Address, cfg.SpyNode.UserAgent,
 		cfg.SpyNode.StartHash, cfg.SpyNode.UntrustedNodes, cfg.SpyNode.SafeTxDelay,
 		cfg.SpyNode.ShotgunCount)
 	if err != nil {
@@ -166,35 +175,19 @@ func main() {
 		}
 	}
 
-	if err := wallet.Load(ctx); err != nil {
-		logger.Fatal(ctx, "Failed to load wallet : %s", err)
-		return
-	}
-
-	node, err := node.NewNode(config, wallet, rpcNode, spyNode)
+	node, err := node.NewNode(config, masterDB, wallet, rpcNode, spyNode)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to create node : %s", err)
 	}
 
 	// -------------------------------------------------------------------------
-	// Start SpyNode
+	// Start Node
 
 	wg := sync.WaitGroup{}
 
-	// Make a channel to listen for errors coming from the spynode. Use a buffered channel so the
-	//   goroutine can exit if we don't collect this error.
-	spyNodeErrors := make(chan error, 1)
-
-	// Start the spynode.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		logger.Info(ctx, "SpyNode Running")
-		spyNodeErrors <- spyNode.Run(ctx)
-	}()
-
-	// -------------------------------------------------------------------------
-	// Start Node
+	if err := node.Load(ctx); err != nil {
+		logger.Fatal(ctx, "Failed to load node : %s", err)
+	}
 
 	// Make a channel to listen for errors coming from the spynode. Use a buffered channel so the
 	//   goroutine can exit if we don't collect this error.
@@ -206,6 +199,21 @@ func main() {
 		defer wg.Done()
 		logger.Info(ctx, "Node Running")
 		nodeErrors <- node.Run(ctx)
+	}()
+
+	// -------------------------------------------------------------------------
+	// Start SpyNode
+
+	// Make a channel to listen for errors coming from the spynode. Use a buffered channel so the
+	//   goroutine can exit if we don't collect this error.
+	spyNodeErrors := make(chan error, 1)
+
+	// Start the spynode.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		logger.Info(ctx, "SpyNode Running")
+		spyNodeErrors <- spyNode.Run(ctx)
 	}()
 
 	// -------------------------------------------------------------------------

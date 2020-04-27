@@ -6,11 +6,17 @@ import (
 	"encoding/binary"
 	"sync"
 
-	"github.com/tokenized/relationship-test/internal/platform/config"
+	"github.com/tokenized/relationship-example/internal/platform/config"
+	"github.com/tokenized/relationship-example/internal/platform/db"
 
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
+	"github.com/tokenized/smart-contract/pkg/logger"
 
 	"github.com/pkg/errors"
+)
+
+const (
+	walletKey = "wallet"
 )
 
 type Wallet struct {
@@ -52,7 +58,16 @@ func NewWallet(cfg *config.Config, keyText string) (*Wallet, error) {
 	return result, nil
 }
 
-func (w *Wallet) Load(ctx context.Context) error {
+func (w *Wallet) Load(ctx context.Context, dbConn *db.DB) error {
+	b, err := dbConn.Fetch(ctx, walletKey)
+	if err == nil {
+		if err := w.Deserialize(bytes.NewReader(b)); err != nil {
+			return errors.Wrap(err, "deserialize wallet")
+		}
+	} else if err != db.ErrNotFound {
+		return errors.Wrap(err, "fetch wallet")
+	}
+
 	w.hashLock.Lock()
 	defer w.hashLock.Unlock()
 
@@ -70,6 +85,27 @@ func (w *Wallet) Load(ctx context.Context) error {
 		if err := w.ForwardScan(ctx, t); err != nil {
 			return errors.Wrap(err, "forward scan")
 		}
+	}
+
+	balance := uint64(0)
+	for _, utxos := range w.utxos {
+		for _, utxo := range utxos {
+			balance += utxo.UTXO.Value
+		}
+	}
+	logger.Info(ctx, "Bitcoin balance : %0.8f", float64(balance)/100000000.0)
+
+	return nil
+}
+
+func (w *Wallet) Save(ctx context.Context, dbConn *db.DB) error {
+	var buf bytes.Buffer
+	if err := w.Serialize(&buf); err != nil {
+		return errors.Wrap(err, "serialize wallet")
+	}
+
+	if err := dbConn.Put(ctx, walletKey, buf.Bytes()); err != nil {
+		return errors.Wrap(err, "put wallet")
 	}
 
 	return nil
@@ -136,8 +172,23 @@ func (w *Wallet) Serialize(buf *bytes.Buffer) error {
 		if _, err := buf.Write(hash[:]); err != nil {
 			return errors.Wrap(err, "write hash")
 		}
+
 		if err := ra.Serialize(buf); err != nil {
-			return errors.Wrap(err, "write address")
+			return errors.Wrap(err, "write raw address")
+		}
+	}
+
+	w.addressLock.Lock()
+	defer w.addressLock.Unlock()
+
+	for t := 0; t < 3; t++ {
+		if err := binary.Write(buf, binary.LittleEndian, uint64(len(w.addressesList[t]))); err != nil {
+			return errors.Wrap(err, "addresses size")
+		}
+		for _, address := range w.addressesList[t] {
+			if err := address.Serialize(buf); err != nil {
+				return errors.Wrap(err, "write address")
+			}
 		}
 	}
 
@@ -151,6 +202,7 @@ func (w *Wallet) Serialize(buf *bytes.Buffer) error {
 		if err := binary.Write(buf, binary.LittleEndian, uint32(len(utxos))); err != nil {
 			return errors.Wrap(err, "utxos sub size")
 		}
+
 		for _, utxo := range utxos {
 			if err := utxo.Serialize(buf); err != nil {
 				return errors.Wrap(err, "write utxo")
@@ -178,10 +230,37 @@ func (w *Wallet) Deserialize(buf *bytes.Reader) error {
 
 		var ra bitcoin.RawAddress
 		if err := ra.Deserialize(buf); err != nil {
-			return errors.Wrap(err, "read address")
+			return errors.Wrap(err, "read raw address")
 		}
 
 		w.hashes[hash] = ra
+	}
+
+	w.addressLock.Lock()
+	defer w.addressLock.Unlock()
+
+	w.addressesList = make([][]*Address, 3)
+	for t := 0; t < 3; t++ {
+		if err := binary.Read(buf, binary.LittleEndian, &count); err != nil {
+			return errors.Wrap(err, "addresses size")
+		}
+		w.addressesList[t] = make([]*Address, 0, count)
+		for i := uint64(0); i < count; i++ {
+			var address Address
+			if err := address.Deserialize(buf); err != nil {
+				return errors.Wrap(err, "read address")
+			}
+
+			w.addressesList[t] = append(w.addressesList[t], &address)
+
+			hashes, err := address.Address.Hashes()
+			if err != nil {
+				return errors.Wrap(err, "raw address hashes")
+			}
+			for _, hash := range hashes {
+				w.addressesMap[hash] = &address
+			}
+		}
 	}
 
 	w.utxoLock.Lock()
@@ -201,7 +280,7 @@ func (w *Wallet) Deserialize(buf *bytes.Reader) error {
 			continue
 		}
 
-		utxos := make([]UTXO, subCount, 0)
+		utxos := make([]UTXO, 0, subCount)
 		for i := uint32(0); i < subCount; i++ {
 			var utxo UTXO
 			if err := utxo.Deserialize(buf); err != nil {
