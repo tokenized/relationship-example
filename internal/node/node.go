@@ -10,6 +10,9 @@ import (
 	"github.com/tokenized/relationship-example/internal/platform/db"
 	"github.com/tokenized/relationship-example/internal/wallet"
 
+	"github.com/tokenized/specification/dist/golang/actions"
+	"github.com/tokenized/specification/dist/golang/protocol"
+
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
 	"github.com/tokenized/smart-contract/pkg/inspector"
 	"github.com/tokenized/smart-contract/pkg/logger"
@@ -132,6 +135,20 @@ func (n *Node) ProcessTx(ctx context.Context, tx *wire.MsgTx) error {
 
 	if err := itx.Promote(ctx, n.rpc); err != nil {
 		return errors.Wrap(err, "promote inspector tx")
+	}
+
+	for index, output := range itx.Outputs {
+		a, err := protocol.Deserialize(output.UTXO.LockingScript, n.cfg.IsTest)
+		if err != nil {
+			continue
+		}
+
+		switch action := a.(type) {
+		case *actions.Message:
+			if err := n.ProcessMessage(ctx, itx, uint32(index), action); err != nil {
+				return errors.Wrap(err, "process message")
+			}
+		}
 	}
 
 	return nil

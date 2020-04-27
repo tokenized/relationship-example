@@ -24,6 +24,7 @@ var clientCommand = &cobra.Command{
 
 func Execute() {
 	clientCommand.AddCommand(commandReceive)
+	clientCommand.AddCommand(commandInitiate)
 	clientCommand.Execute()
 }
 

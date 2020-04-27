@@ -100,9 +100,10 @@ func (n *Node) HandleTxState(ctx context.Context, msgType int, txid bitcoin.Hash
 	case handlers.ListenerMsgTxStateCancel:
 		fallthrough
 	case handlers.ListenerMsgTxStateUnsafe:
-		logger.Info(ctx, "Cancelling tx : %s", txid.String())
+		logger.Info(ctx, "Canceling tx : %s", txid.String())
 		n.RemoveTx(txid)
 	case handlers.ListenerMsgTxStateRevert:
+		logger.Info(ctx, "Reverted tx : %s", txid.String())
 		// TODO Revert
 	}
 
@@ -113,5 +114,6 @@ func (n *Node) HandleTxState(ctx context.Context, msgType int, txid bitcoin.Hash
 func (n *Node) HandleInSync(ctx context.Context) error {
 	ctx = logger.ContextWithOutLogSubSystem(ctx)
 	n.isInSync.Store(true)
+	logger.Info(ctx, "In Sync")
 	return nil
 }
