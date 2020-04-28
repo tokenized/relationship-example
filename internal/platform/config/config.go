@@ -2,8 +2,6 @@ package config
 
 import (
 	"encoding/json"
-	"io/ioutil"
-	"path/filepath"
 
 	"github.com/kelseyhightower/envconfig"
 	"github.com/pkg/errors"
@@ -13,9 +11,9 @@ import (
 
 // EnvironmentConfig is used to hold all runtime configuration.
 type EnvironmentConfig struct {
-	Key        string `envconfig:"XKEY" json:"XKEY"`
-	EntityFile string `envconfig:"ENTITY_FILE" json:"ENTITY_FILE"`
-	Bitcoin    struct {
+	Key     string `envconfig:"XKEY" json:"XKEY"`
+	Entity  string `envconfig:"ENTITY" json:"ENTITY"`
+	Bitcoin struct {
 		Network    string  `default:"mainnet" envconfig:"BITCOIN_CHAIN" json:"BITCOIN_CHAIN"`
 		IsTest     bool    `default:"true" envconfig:"IS_TEST" json:"IS_TEST"`
 		DustLimit  uint64  `default:"546" envconfig:"DUST_LIMIT" json:"DUST_LIMIT"`
@@ -112,14 +110,9 @@ func (c EnvironmentConfig) Config() (*Config, error) {
 		WalletPath: c.Bitcoin.WalletPath,
 	}
 
-	if len(c.EntityFile) > 0 {
-		data, err := ioutil.ReadFile(filepath.FromSlash(c.EntityFile))
-		if err != nil {
-			return nil, errors.Wrap(err, "read entity file")
-		}
-
+	if len(c.Entity) > 0 {
 		// Put json data into opReturn struct
-		if err := json.Unmarshal(data, &result.Entity); err != nil {
+		if err := json.Unmarshal([]byte(c.Entity), &result.Entity); err != nil {
 			return nil, errors.Wrap(err, "unmarshal entity")
 		}
 	}

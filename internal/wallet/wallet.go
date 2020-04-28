@@ -46,7 +46,7 @@ func NewWallet(cfg *config.Config, keyText string) (*Wallet, error) {
 		hashes:        make(map[bitcoin.Hash20]bitcoin.RawAddress),
 		utxos:         make(map[bitcoin.Hash32][]*UTXO),
 		addressesMap:  make(map[bitcoin.Hash20]*Address),
-		addressesList: make([][]*Address, 3, 3),
+		addressesList: make([][]*Address, KeyTypeCount, KeyTypeCount),
 	}
 
 	var err error
@@ -68,6 +68,10 @@ func (w *Wallet) Load(ctx context.Context, dbConn *db.DB) error {
 		return errors.Wrap(err, "fetch wallet")
 	}
 
+	return w.Prepare(ctx)
+}
+
+func (w *Wallet) Prepare(ctx context.Context) error {
 	w.hashLock.Lock()
 	defer w.hashLock.Unlock()
 
@@ -81,7 +85,7 @@ func (w *Wallet) Load(ctx context.Context, dbConn *db.DB) error {
 	}
 
 	// Build initial address gap
-	for t := uint32(0); t < 3; t++ {
+	for t := uint32(0); t < KeyTypeCount; t++ {
 		if err := w.ForwardScan(ctx, t); err != nil {
 			return errors.Wrap(err, "forward scan")
 		}
@@ -94,7 +98,6 @@ func (w *Wallet) Load(ctx context.Context, dbConn *db.DB) error {
 		}
 	}
 	logger.Info(ctx, "Bitcoin balance : %0.8f", float64(balance)/100000000.0)
-
 	return nil
 }
 
@@ -181,7 +184,7 @@ func (w *Wallet) Serialize(buf *bytes.Buffer) error {
 	w.addressLock.Lock()
 	defer w.addressLock.Unlock()
 
-	for t := 0; t < 3; t++ {
+	for t := 0; t < KeyTypeCount; t++ {
 		if err := binary.Write(buf, binary.LittleEndian, uint64(len(w.addressesList[t]))); err != nil {
 			return errors.Wrap(err, "addresses size")
 		}
@@ -239,8 +242,8 @@ func (w *Wallet) Deserialize(buf *bytes.Reader) error {
 	w.addressLock.Lock()
 	defer w.addressLock.Unlock()
 
-	w.addressesList = make([][]*Address, 3)
-	for t := 0; t < 3; t++ {
+	w.addressesList = make([][]*Address, KeyTypeCount)
+	for t := 0; t < KeyTypeCount; t++ {
 		if err := binary.Read(buf, binary.LittleEndian, &count); err != nil {
 			return errors.Wrap(err, "addresses size")
 		}

@@ -54,7 +54,7 @@ func (w *Wallet) GetInputKeys(ctx context.Context, tx *txbuilder.TxBuilder) ([]b
 	for _, input := range tx.MsgTx.TxIn {
 		utxos, exists := w.utxos[input.PreviousOutPoint.Hash]
 		if !exists {
-			return result, errors.New("UTXO not found")
+			return result, errors.New("UTXO hash not found")
 		}
 		found := false
 		for _, utxo := range utxos {
@@ -68,7 +68,7 @@ func (w *Wallet) GetInputKeys(ctx context.Context, tx *txbuilder.TxBuilder) ([]b
 			}
 		}
 		if !found {
-			return result, errors.New("UTXO not found")
+			return result, errors.New("UTXO index not found")
 		}
 	}
 

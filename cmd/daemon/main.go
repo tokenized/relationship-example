@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
@@ -18,8 +17,6 @@ import (
 	"github.com/tokenized/relationship-example/internal/platform/config"
 	"github.com/tokenized/relationship-example/internal/platform/db"
 	"github.com/tokenized/relationship-example/internal/wallet"
-
-	"github.com/tokenized/specification/dist/golang/actions"
 
 	"github.com/tokenized/smart-contract/pkg/logger"
 	"github.com/tokenized/smart-contract/pkg/rpcnode"
@@ -159,29 +156,13 @@ func main() {
 		logger.Fatal(ctx, "Failed to create wallet : %s", err)
 	}
 
-	// ---------------------------------------------------------------------------------------------
-	// Entity
-
-	var entity actions.EntityField
-	if len(cfg.EntityFile) > 0 {
-		data, err := ioutil.ReadFile(filepath.FromSlash(cfg.EntityFile))
-		if err != nil {
-			logger.Fatal(ctx, "Failed to read entity json file : %s\n", err)
-		}
-
-		// Put json data into opReturn struct
-		if err := json.Unmarshal(data, &entity); err != nil {
-			logger.Fatal(ctx, "Failed to unmarshal entity json file : %s\n", err)
-		}
-	}
+	// -------------------------------------------------------------------------
+	// Node
 
 	node, err := node.NewNode(config, masterDB, wallet, rpcNode, spyNode)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to create node : %s", err)
 	}
-
-	// -------------------------------------------------------------------------
-	// Start Node
 
 	wg := sync.WaitGroup{}
 

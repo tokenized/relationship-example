@@ -143,9 +143,9 @@ func (n *Node) ProcessTx(ctx context.Context, tx *wire.MsgTx) error {
 			continue
 		}
 
-		switch action := a.(type) {
+		switch a.(type) {
 		case *actions.Message:
-			if err := n.ProcessMessage(ctx, itx, uint32(index), action); err != nil {
+			if err := n.ProcessMessage(ctx, itx, uint32(index)); err != nil {
 				return errors.Wrap(err, "process message")
 			}
 		}

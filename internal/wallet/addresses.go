@@ -13,16 +13,20 @@ import (
 )
 
 const (
-	KeyTypeExternal     = uint32(0)
-	KeyTypeInternal     = uint32(1)
-	KeyTypeRelationship = uint32(2)
+	KeyTypeExternal  = uint32(0)
+	KeyTypeInternal  = uint32(1)
+	KeyTypeRelateOut = uint32(2)
+	KeyTypeRelateIn  = uint32(3)
+
+	KeyTypeCount = 4
 )
 
 var (
 	KeyTypeName = []string{
 		"External",
 		"Internal",
-		"Relationship",
+		"Relate Out",
+		"Relate In",
 	}
 )
 
@@ -64,7 +68,7 @@ func (w *Wallet) GetRelationshipAddress(ctx context.Context) (bitcoin.RawAddress
 	w.addressLock.Lock()
 	defer w.addressLock.Unlock()
 
-	for _, address := range w.addressesList[KeyTypeRelationship] {
+	for _, address := range w.addressesList[KeyTypeRelateIn] {
 		if !address.Used && !address.Given {
 			address.Given = true
 			return address.Address, nil
@@ -78,10 +82,10 @@ func (w *Wallet) GetRelationshipKey(ctx context.Context) (bitcoin.Key, uint32, e
 	w.addressLock.Lock()
 	defer w.addressLock.Unlock()
 
-	for _, address := range w.addressesList[KeyTypeRelationship] {
+	for _, address := range w.addressesList[KeyTypeRelateOut] {
 		if !address.Used && !address.Given {
 			address.Given = true
-			key, err := w.GetKey(ctx, KeyTypeRelationship, address.KeyIndex)
+			key, err := w.GetKey(ctx, KeyTypeRelateOut, address.KeyIndex)
 			return key, address.KeyIndex, err
 		}
 	}
@@ -105,7 +109,7 @@ func (w *Wallet) GetKey(ctx context.Context, t, i uint32) (bitcoin.Key, error) {
 
 // GetAddress gets an address by type and index.
 func (w *Wallet) GetAddress(ctx context.Context, t, i uint32) *Address {
-	if t > 2 {
+	if t >= KeyTypeCount {
 		return nil
 	}
 
@@ -165,7 +169,7 @@ func (w *Wallet) MarkAddress(ctx context.Context, add *Address) error {
 }
 
 func (w *Wallet) ForwardScan(ctx context.Context, t uint32) error {
-	if t > 2 {
+	if t >= KeyTypeCount {
 		return fmt.Errorf("Invalid address type : %d", t)
 	}
 
@@ -199,7 +203,7 @@ func (w *Wallet) ForwardScan(ctx context.Context, t uint32) error {
 		}
 
 		var ra bitcoin.RawAddress
-		if t == KeyTypeRelationship {
+		if t == KeyTypeRelateIn {
 			ra, err = bitcoin.NewRawAddressPublicKey(key.PublicKey())
 			if err != nil {
 				return errors.Wrap(err, "address")
