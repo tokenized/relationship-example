@@ -27,14 +27,13 @@ var (
 )
 
 // GetPaymentAddress returns an unused payment address.
-// TODO Add temporary marking so if multiple addresses are requested before the first one is
-//   actually used it will not be given out multiple times. --ce
 func (w *Wallet) GetPaymentAddress(ctx context.Context) (bitcoin.RawAddress, error) {
 	w.addressLock.Lock()
 	defer w.addressLock.Unlock()
 
 	for _, address := range w.addressesList[KeyTypeExternal] {
-		if address.Used == false {
+		if !address.Used && !address.Given {
+			address.Given = true
 			return address.Address, nil
 		}
 	}
@@ -42,23 +41,52 @@ func (w *Wallet) GetPaymentAddress(ctx context.Context) (bitcoin.RawAddress, err
 	return bitcoin.RawAddress{}, errors.New("Not Available")
 }
 
+// GetChangeAddress returns an unused change address.
+func (w *Wallet) GetChangeAddress(ctx context.Context) (*Address, error) {
+	w.addressLock.Lock()
+	defer w.addressLock.Unlock()
+
+	for _, address := range w.addressesList[KeyTypeInternal] {
+		if !address.Used && !address.Given {
+			address.Given = true
+			return address, nil
+		}
+	}
+
+	return nil, errors.New("Not Available")
+}
+
 // GetRelationshipAddress returns an unused relationship address. These are P2PK so that the sender
 //   knows the public key when creating the transaction to enable encryption, as well as to ensure
 //   the public key is included in the initial transaction so it can be easily decrypted by the
 //   proper parties.
-// TODO Add temporary marking so if multiple addresses are requested before the first one is
-//   actually used it will not be given out multiple times. --ce
 func (w *Wallet) GetRelationshipAddress(ctx context.Context) (bitcoin.RawAddress, error) {
 	w.addressLock.Lock()
 	defer w.addressLock.Unlock()
 
 	for _, address := range w.addressesList[KeyTypeRelationship] {
-		if address.Used == false {
+		if !address.Used && !address.Given {
+			address.Given = true
 			return address.Address, nil
 		}
 	}
 
 	return bitcoin.RawAddress{}, errors.New("Not Available")
+}
+
+func (w *Wallet) GetRelationshipKey(ctx context.Context) (bitcoin.Key, uint32, error) {
+	w.addressLock.Lock()
+	defer w.addressLock.Unlock()
+
+	for _, address := range w.addressesList[KeyTypeRelationship] {
+		if !address.Used && !address.Given {
+			address.Given = true
+			key, err := w.GetKey(ctx, KeyTypeRelationship, address.KeyIndex)
+			return key, address.KeyIndex, err
+		}
+	}
+
+	return bitcoin.Key{}, 0, errors.New("Not Available")
 }
 
 func (w *Wallet) GetKey(ctx context.Context, t, i uint32) (bitcoin.Key, error) {
@@ -75,19 +103,23 @@ func (w *Wallet) GetKey(ctx context.Context, t, i uint32) (bitcoin.Key, error) {
 	return key.Key(bitcoin.InvalidNet), nil
 }
 
-// FindAddress finds an address by type and index.
-func (w *Wallet) FindAddress(ctx context.Context, t, i uint32) *Address {
+// GetAddress gets an address by type and index.
+func (w *Wallet) GetAddress(ctx context.Context, t, i uint32) *Address {
 	if t > 2 {
 		return nil
 	}
 
 	w.addressLock.Lock()
 	defer w.addressLock.Unlock()
+
+	if int(i) >= len(w.addressesList[t]) {
+		return nil
+	}
 	return w.addressesList[t][i]
 }
 
-// FindAddressByAddress finds an address by the raw address.
-func (w *Wallet) FindAddressByAddress(ctx context.Context, ra bitcoin.RawAddress) (*Address, error) {
+// FindAddress finds an address by the raw address.
+func (w *Wallet) FindAddress(ctx context.Context, ra bitcoin.RawAddress) (*Address, error) {
 	hashes, err := ra.Hashes()
 	if err != nil {
 		return nil, errors.Wrap(err, "address hash")

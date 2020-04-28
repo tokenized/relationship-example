@@ -31,7 +31,7 @@ type Wallet struct {
 
 	// UTXOs
 	isModified bool
-	utxos      map[bitcoin.Hash32][]UTXO
+	utxos      map[bitcoin.Hash32][]*UTXO
 	utxoLock   sync.Mutex
 
 	// Addresses
@@ -44,7 +44,7 @@ func NewWallet(cfg *config.Config, keyText string) (*Wallet, error) {
 	result := &Wallet{
 		cfg:           cfg,
 		hashes:        make(map[bitcoin.Hash20]bitcoin.RawAddress),
-		utxos:         make(map[bitcoin.Hash32][]UTXO),
+		utxos:         make(map[bitcoin.Hash32][]*UTXO),
 		addressesMap:  make(map[bitcoin.Hash20]*Address),
 		addressesList: make([][]*Address, 3, 3),
 	}
@@ -269,7 +269,7 @@ func (w *Wallet) Deserialize(buf *bytes.Reader) error {
 	if err := binary.Read(buf, binary.LittleEndian, &count); err != nil {
 		return errors.Wrap(err, "utxos size")
 	}
-	w.utxos = make(map[bitcoin.Hash32][]UTXO)
+	w.utxos = make(map[bitcoin.Hash32][]*UTXO)
 	for i := uint64(0); i < count; i++ {
 		var subCount uint32
 		if err := binary.Read(buf, binary.LittleEndian, &subCount); err != nil {
@@ -280,9 +280,9 @@ func (w *Wallet) Deserialize(buf *bytes.Reader) error {
 			continue
 		}
 
-		utxos := make([]UTXO, 0, subCount)
+		utxos := make([]*UTXO, 0, subCount)
 		for i := uint32(0); i < subCount; i++ {
-			var utxo UTXO
+			utxo := &UTXO{}
 			if err := utxo.Deserialize(buf); err != nil {
 				return errors.Wrap(err, "read utxo")
 			}

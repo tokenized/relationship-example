@@ -8,18 +8,80 @@ import (
 
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
 	"github.com/tokenized/smart-contract/pkg/logger"
+	"github.com/tokenized/smart-contract/pkg/txbuilder"
 	"github.com/tokenized/smart-contract/pkg/wire"
 
 	"github.com/pkg/errors"
 )
 
-func (w *Wallet) CreateUTXO(ctx context.Context, utxo UTXO) error {
+func (w *Wallet) GetKeyUTXOs(ctx context.Context, keyType, keyIndex uint32) ([]*UTXO, error) {
+	w.utxoLock.Lock()
+	defer w.utxoLock.Unlock()
+
+	result := make([]*UTXO, 0)
+	for _, utxos := range w.utxos {
+		for _, utxo := range utxos {
+			if !utxo.Reserved && (utxo.KeyType == keyType && utxo.KeyIndex == keyIndex) {
+				result = append(result, utxo)
+			}
+		}
+	}
+
+	return result, nil
+}
+
+func (w *Wallet) GetBitcoinUTXOs(ctx context.Context) ([]*UTXO, error) {
+	w.utxoLock.Lock()
+	defer w.utxoLock.Unlock()
+
+	result := make([]*UTXO, 0)
+	for _, utxos := range w.utxos {
+		for _, utxo := range utxos {
+			if !utxo.Reserved && (utxo.KeyType == KeyTypeExternal || utxo.KeyType == KeyTypeInternal) {
+				result = append(result, utxo)
+			}
+		}
+	}
+
+	return result, nil
+}
+
+func (w *Wallet) GetInputKeys(ctx context.Context, tx *txbuilder.TxBuilder) ([]bitcoin.Key, error) {
+	w.utxoLock.Lock()
+	defer w.utxoLock.Unlock()
+
+	result := make([]bitcoin.Key, 0, len(tx.Inputs))
+	for _, input := range tx.MsgTx.TxIn {
+		utxos, exists := w.utxos[input.PreviousOutPoint.Hash]
+		if !exists {
+			return result, errors.New("UTXO not found")
+		}
+		found := false
+		for _, utxo := range utxos {
+			if utxo.UTXO.Index == input.PreviousOutPoint.Index {
+				found = true
+				key, err := w.GetKey(ctx, utxo.KeyType, utxo.KeyIndex)
+				if err != nil {
+					return result, errors.Wrap(err, "get key")
+				}
+				result = append(result, key)
+			}
+		}
+		if !found {
+			return result, errors.New("UTXO not found")
+		}
+	}
+
+	return result, nil
+}
+
+func (w *Wallet) CreateUTXO(ctx context.Context, utxo *UTXO) error {
 	w.utxoLock.Lock()
 	defer w.utxoLock.Unlock()
 
 	utxos, exists := w.utxos[utxo.UTXO.Hash]
 	if !exists {
-		w.utxos[utxo.UTXO.Hash] = []UTXO{utxo}
+		w.utxos[utxo.UTXO.Hash] = []*UTXO{utxo}
 		return nil
 	}
 
@@ -40,7 +102,7 @@ func (w *Wallet) DeleteUTXO(ctx context.Context, hash bitcoin.Hash32, index uint
 	for i, utxo := range utxos {
 		if utxo.UTXO.Index == index {
 			w.utxos[hash] = append(utxos[:i], utxos[i+1:]...)
-			return &utxo, nil
+			return utxo, nil
 		}
 	}
 
@@ -60,7 +122,7 @@ func (w *Wallet) ReserveUTXO(ctx context.Context, hash bitcoin.Hash32, index uin
 		if utxo.UTXO.Index == index {
 			utxos[i].Reserved = true
 			w.utxos[hash] = utxos
-			return &utxo, nil
+			return utxo, nil
 		}
 	}
 
@@ -79,7 +141,7 @@ func (w *Wallet) ProcessUTXOs(ctx context.Context, tx *wire.MsgTx, isFinal bool)
 			}
 
 			if utxo != nil {
-				address := w.FindAddress(ctx, utxo.KeyType, utxo.KeyIndex)
+				address := w.GetAddress(ctx, utxo.KeyType, utxo.KeyIndex)
 				if address != nil {
 					logger.Info(ctx, "Deleted UTXO (%d) : [%s %d %s] %s %d", utxo.UTXO.Value,
 						KeyTypeName[utxo.KeyType], utxo.KeyIndex,
@@ -99,7 +161,7 @@ func (w *Wallet) ProcessUTXOs(ctx context.Context, tx *wire.MsgTx, isFinal bool)
 			}
 
 			if utxo != nil {
-				address := w.FindAddress(ctx, utxo.KeyType, utxo.KeyIndex)
+				address := w.GetAddress(ctx, utxo.KeyType, utxo.KeyIndex)
 				if address != nil {
 					logger.Info(ctx, "Reserved UTXO (%d) : [%s %d %s] %s %d", utxo.UTXO.Value,
 						KeyTypeName[address.KeyType], address.KeyIndex,
@@ -123,7 +185,7 @@ func (w *Wallet) ProcessUTXOs(ctx context.Context, tx *wire.MsgTx, isFinal bool)
 		}
 
 		// Check if we own the address
-		address, err := w.FindAddressByAddress(ctx, ra)
+		address, err := w.FindAddress(ctx, ra)
 		if err != nil {
 			logger.Error(ctx, "Failed to find address : %s", err)
 		}
@@ -133,7 +195,7 @@ func (w *Wallet) ProcessUTXOs(ctx context.Context, tx *wire.MsgTx, isFinal bool)
 
 		if output.Value > 0 {
 			// Add the UTXO
-			utxo := UTXO{
+			utxo := &UTXO{
 				UTXO: bitcoin.UTXO{
 					Hash:          *tx.TxHash(),
 					Index:         uint32(index),
@@ -214,4 +276,12 @@ func (u *UTXO) Deserialize(buf *bytes.Reader) error {
 	}
 
 	return nil
+}
+
+func ConvertUTXOs(utxos []*UTXO) []bitcoin.UTXO {
+	result := make([]bitcoin.UTXO, 0, len(utxos))
+	for _, utxo := range utxos {
+		result = append(result, utxo.UTXO)
+	}
+	return result
 }

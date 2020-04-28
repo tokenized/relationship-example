@@ -11,6 +11,7 @@ type Address struct {
 	KeyType   uint32
 	KeyIndex  uint32
 	Used      bool
+	Given     bool
 }
 
 type UTXO struct {

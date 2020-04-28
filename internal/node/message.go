@@ -77,7 +77,7 @@ func (n *Node) DecryptPayload(ctx context.Context, itx *inspector.Transaction, s
 			return payload, errors.Wrap(err, "sender address")
 		}
 
-		address, err := n.wallet.FindAddressByAddress(ctx, senderAddress)
+		address, err := n.wallet.FindAddress(ctx, senderAddress)
 		if err != nil {
 			return payload, errors.Wrap(err, "find address")
 		}
@@ -114,7 +114,7 @@ func (n *Node) DecryptPayload(ctx context.Context, itx *inspector.Transaction, s
 
 		// Check if receiver keys are ours
 		for _, receiverAddress := range receiverAddresses {
-			address, err := n.wallet.FindAddressByAddress(ctx, receiverAddress)
+			address, err := n.wallet.FindAddress(ctx, receiverAddress)
 			if err != nil {
 				return payload, errors.Wrap(err, "find address")
 			}
