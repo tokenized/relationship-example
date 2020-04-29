@@ -6,6 +6,8 @@ import (
 
 	"github.com/tokenized/envelope/pkg/golang/envelope"
 	"github.com/tokenized/envelope/pkg/golang/envelope/v0"
+	"github.com/tokenized/specification/dist/golang/actions"
+	"github.com/tokenized/specification/dist/golang/protocol"
 
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
 	"github.com/tokenized/smart-contract/pkg/logger"
@@ -14,23 +16,27 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (w *Wallet) DecryptScript(ctx context.Context, tx *wire.MsgTx, script []byte) ([]byte, error) {
-
-	// TODO Implement flag values for multi-party relationships --ce
-	// An encryption secret from outside the tx will likely be used for those.
+func (w *Wallet) DecryptActionDirect(ctx context.Context, tx *wire.MsgTx,
+	index int) (actions.Action, bitcoin.Hash32, error) {
 
 	// Reparse the full envelope message
-	env, err := envelope.Deserialize(bytes.NewReader(script))
+	env, err := envelope.Deserialize(bytes.NewReader(tx.TxOut[index].PkScript))
 	if err != nil {
-		return nil, errors.Wrap(err, "get full message")
+		return nil, bitcoin.Hash32{}, errors.Wrap(err, "deserlialize envelope")
+	}
+
+	if !bytes.Equal(env.PayloadProtocol(), protocol.GetProtocolID(w.cfg.IsTest)) {
+		return nil, bitcoin.Hash32{}, protocol.ErrNotTokenized
 	}
 
 	payload := env.Payload() // Unencrypted
+	var encryptionKey bitcoin.Hash32
+	var decrypted []byte
 
 	// Convert to specific version of envelope
 	env0, ok := env.(*v0.Message)
 	if !ok {
-		return payload, errors.New("Unsupported envelope version")
+		return nil, bitcoin.Hash32{}, errors.New("Unsupported envelope version")
 	}
 
 	logger.Verbose(ctx, "Decrypting %d payloads", env0.EncryptedPayloadCount())
@@ -42,23 +48,23 @@ func (w *Wallet) DecryptScript(ctx context.Context, tx *wire.MsgTx, script []byt
 
 		senderPublicKey, err := ep.SenderPublicKey(tx)
 		if err != nil {
-			return payload, errors.Wrap(err, "sender public key")
+			return nil, bitcoin.Hash32{}, errors.Wrap(err, "sender public key")
 		}
 
 		receiverAddresses, err := ep.ReceiverAddresses(tx)
 		if err != nil {
-			return payload, errors.Wrap(err, "receiver scripts")
+			return nil, bitcoin.Hash32{}, errors.Wrap(err, "receiver scripts")
 		}
 
 		// Check if sender key is ours
 		senderAddress, err := senderPublicKey.RawAddress()
 		if err != nil {
-			return payload, errors.Wrap(err, "sender address")
+			return nil, bitcoin.Hash32{}, errors.Wrap(err, "sender address")
 		}
 
 		address, err := w.FindAddress(ctx, senderAddress)
 		if err != nil {
-			return payload, errors.Wrap(err, "find address")
+			return nil, bitcoin.Hash32{}, errors.Wrap(err, "find address")
 		}
 
 		if address != nil {
@@ -67,7 +73,7 @@ func (w *Wallet) DecryptScript(ctx context.Context, tx *wire.MsgTx, script []byt
 				bitcoin.NewAddressFromRawAddress(senderAddress, w.cfg.Net).String())
 			key, err := w.GetKey(ctx, address.KeyType, address.KeyIndex)
 			if err != nil {
-				return payload, errors.Wrap(err, "get key")
+				return nil, bitcoin.Hash32{}, errors.Wrap(err, "get key")
 			}
 
 			for _, ra := range receiverAddresses {
@@ -76,9 +82,9 @@ func (w *Wallet) DecryptScript(ctx context.Context, tx *wire.MsgTx, script []byt
 					continue
 				}
 
-				decrypted, err := ep.SenderDecrypt(tx, key, pubKey)
+				decrypted, encryptionKey, err = ep.SenderDecryptKey(tx, key, pubKey)
 				if err != nil {
-					return payload, errors.Wrap(err, "sender decrypt")
+					return nil, bitcoin.Hash32{}, errors.Wrap(err, "sender decrypt")
 				}
 
 				wasDecrypted = true
@@ -97,19 +103,19 @@ func (w *Wallet) DecryptScript(ctx context.Context, tx *wire.MsgTx, script []byt
 		for _, receiverAddress := range receiverAddresses {
 			address, err := w.FindAddress(ctx, receiverAddress)
 			if err != nil {
-				return payload, errors.Wrap(err, "find address")
+				return nil, bitcoin.Hash32{}, errors.Wrap(err, "find address")
 			}
 
 			if address != nil {
 				// Decrypt as receiver
 				key, err := w.GetKey(ctx, address.KeyType, address.KeyIndex)
 				if err != nil {
-					return payload, errors.Wrap(err, "get key")
+					return nil, bitcoin.Hash32{}, errors.Wrap(err, "get key")
 				}
 
-				decrypted, err := ep.ReceiverDecrypt(tx, key)
+				decrypted, encryptionKey, err = ep.ReceiverDecryptKey(tx, key)
 				if err != nil {
-					return payload, errors.Wrap(err, "receiver decrypt")
+					return nil, bitcoin.Hash32{}, errors.Wrap(err, "receiver decrypt")
 				}
 
 				wasDecrypted = true
@@ -123,5 +129,10 @@ func (w *Wallet) DecryptScript(ctx context.Context, tx *wire.MsgTx, script []byt
 		}
 	}
 
-	return payload, nil
+	a, err := actions.Deserialize(env.PayloadIdentifier(), payload)
+	if err != nil {
+		return nil, bitcoin.Hash32{}, errors.Wrap(err, "deserialize action")
+	}
+
+	return a, encryptionKey, nil
 }

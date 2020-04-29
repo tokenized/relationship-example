@@ -8,6 +8,7 @@ import (
 
 	"github.com/tokenized/relationship-example/internal/platform/config"
 	"github.com/tokenized/relationship-example/internal/platform/db"
+	"github.com/tokenized/relationship-example/internal/relationships"
 	"github.com/tokenized/relationship-example/internal/wallet"
 
 	"github.com/tokenized/specification/dist/golang/actions"
@@ -27,6 +28,7 @@ type Node struct {
 	cfg         *config.Config
 	masterDB    *db.DB
 	wallet      *wallet.Wallet
+	rs          *relationships.Relationships
 	rpc         *rpcnode.RPCNode
 	spy         *spynode.Node
 	txs         map[bitcoin.Hash32]*wire.MsgTx
@@ -45,6 +47,12 @@ func NewNode(cfg *config.Config, masterDB *db.DB, wallet *wallet.Wallet, rpc *rp
 		rpc:      rpc,
 		spy:      spy,
 		txs:      make(map[bitcoin.Hash32]*wire.MsgTx),
+	}
+
+	var err error
+	result.rs, err = relationships.NewRelationships(cfg, wallet, result)
+	if err != nil {
+		return nil, err
 	}
 
 	result.stop.Store(false)
@@ -137,15 +145,26 @@ func (n *Node) ProcessTx(ctx context.Context, tx *wire.MsgTx) error {
 		return errors.Wrap(err, "promote inspector tx")
 	}
 
-	for index, output := range itx.Outputs {
-		a, err := protocol.Deserialize(output.UTXO.LockingScript, n.cfg.IsTest)
+	// Check for a flag value
+	var flag []byte
+	for _, output := range itx.MsgTx.TxOut {
+		f, err := protocol.DeserializeFlagOutputScript(output.PkScript)
+		if err == nil {
+			flag = f
+			break
+		}
+	}
+
+	// Process any tokenized actions
+	for index, _ := range itx.MsgTx.TxOut {
+		action, encryptionKey, err := n.wallet.DecryptActionDirect(ctx, itx.MsgTx, index)
 		if err != nil {
 			continue
 		}
 
-		switch a.(type) {
+		switch message := action.(type) {
 		case *actions.Message:
-			if err := n.ProcessMessage(ctx, itx, uint32(index)); err != nil {
+			if err := n.ProcessMessage(ctx, itx, index, encryptionKey, message, flag); err != nil {
 				return errors.Wrap(err, "process message")
 			}
 		}

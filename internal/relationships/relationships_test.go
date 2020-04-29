@@ -5,14 +5,14 @@ import (
 	"testing"
 
 	"github.com/tokenized/relationship-example/internal/platform/tests"
+
 	"github.com/tokenized/specification/dist/golang/actions"
 	"github.com/tokenized/specification/dist/golang/messages"
-	"github.com/tokenized/specification/dist/golang/protocol"
 
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
 )
 
-func TestInitiate(t *testing.T) {
+func TestInitiateDirect(t *testing.T) {
 	ctx := tests.Context()
 	cfg := tests.NewMockConfig()
 
@@ -33,7 +33,7 @@ func TestInitiate(t *testing.T) {
 		t.Fatalf("Failed to generate receiver key : %s", err)
 	}
 
-	originalIR, err := rs.CreateInitiateRelationship(ctx, receiver.PublicKey())
+	originalIR, err := rs.InitiateRelationship(ctx, []bitcoin.PublicKey{receiver.PublicKey()})
 	if err != nil {
 		t.Fatalf("Failed to create initiate relationship : %s", err)
 	}
@@ -47,17 +47,16 @@ func TestInitiate(t *testing.T) {
 
 	messageIndex := 0xffffffff
 	var message *actions.Message
-	for index, output := range tx.TxOut {
-		a, err := protocol.Deserialize(output.PkScript, cfg.IsTest)
+	for index, _ := range tx.TxOut {
+		action, _, err := wallet.DecryptActionDirect(ctx, tx, index)
 		if err != nil {
 			continue
 		}
 
-		switch action := a.(type) {
+		switch a := action.(type) {
 		case *actions.Message:
 			messageIndex = index
-			message = action
-			break
+			message = a
 		}
 	}
 
@@ -65,24 +64,14 @@ func TestInitiate(t *testing.T) {
 		t.Fatalf("Message not found in tx")
 	}
 
-	unencrypted, err := wallet.DecryptScript(ctx, tx, tx.TxOut[messageIndex].PkScript)
-	if err != nil {
-		t.Fatalf("Failed to decrypt message : %s", err)
+	t.Logf("Message code : %d", message.MessageCode)
+
+	if message.MessageCode != messages.CodeInitiateRelationship {
+		t.Fatalf("Wrong message code : got %d, want %d", message.MessageCode,
+			messages.CodeInitiateRelationship)
 	}
 
-	t.Logf("Decrypted : %x", unencrypted)
-
-	a, err := actions.Deserialize([]byte(message.Code()), unencrypted)
-	if err != nil {
-		t.Fatalf("Failed to deserialize action : %s", err)
-	}
-
-	m, ok := a.(*actions.Message)
-	if !ok {
-		t.Fatalf("Action not a message")
-	}
-
-	p, err := messages.Deserialize(m.MessageCode, m.MessagePayload)
+	p, err := messages.Deserialize(message.MessageCode, message.MessagePayload)
 	if err != nil {
 		t.Fatalf("Failed to deserialize message payload : %s", err)
 	}
@@ -91,8 +80,6 @@ func TestInitiate(t *testing.T) {
 	if !ok {
 		t.Fatalf("Wrong message type")
 	}
-
-	t.Logf("Seed Value : %x", ir.SeedValue)
 
 	if !bytes.Equal(originalIR.SeedValue, ir.SeedValue) {
 		t.Fatalf("Wrong seed value : \n  got  %x\n  want %x", originalIR.SeedValue, ir.SeedValue)
