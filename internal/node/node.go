@@ -189,6 +189,9 @@ func (n *Node) Load(ctx context.Context) error {
 	if err := n.wallet.Load(ctx, n.masterDB); err != nil {
 		return errors.Wrap(err, "load wallet")
 	}
+	if err := n.rs.Load(ctx, n.masterDB); err != nil {
+		return errors.Wrap(err, "load relationships")
+	}
 
 	return nil
 }
@@ -196,6 +199,10 @@ func (n *Node) Load(ctx context.Context) error {
 func (n *Node) Save(ctx context.Context) error {
 	if err := n.wallet.Save(ctx, n.masterDB); err != nil {
 		return errors.Wrap(err, "save wallet")
+	}
+
+	if err := n.rs.Save(ctx, n.masterDB); err != nil {
+		return errors.Wrap(err, "save relationships")
 	}
 
 	return nil

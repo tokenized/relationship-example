@@ -6,6 +6,7 @@ import (
 
 	"github.com/tokenized/envelope/pkg/golang/envelope"
 	"github.com/tokenized/envelope/pkg/golang/envelope/v0"
+
 	"github.com/tokenized/specification/dist/golang/actions"
 	"github.com/tokenized/specification/dist/golang/protocol"
 

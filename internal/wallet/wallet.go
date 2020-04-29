@@ -73,23 +73,33 @@ func (w *Wallet) Load(ctx context.Context, dbConn *db.DB) error {
 
 func (w *Wallet) Prepare(ctx context.Context) error {
 	w.hashLock.Lock()
-	defer w.hashLock.Unlock()
 
 	path, err := bitcoin.PathFromString(w.cfg.WalletPath)
 	if err != nil {
+		w.hashLock.Unlock()
 		return errors.Wrap(err, "wallet path")
 	}
 	w.walletKey, err = w.baseKey.ChildKeyForPath(path)
 	if err != nil {
+		w.hashLock.Unlock()
 		return errors.Wrap(err, "wallet parent")
 	}
 
+	w.hashLock.Unlock()
+
+	w.addressLock.Lock()
+
 	// Build initial address gap
 	for t := uint32(0); t < KeyTypeCount; t++ {
-		if err := w.ForwardScan(ctx, t); err != nil {
+		if err := w.forwardScan(ctx, t); err != nil {
+			w.addressLock.Unlock()
 			return errors.Wrap(err, "forward scan")
 		}
 	}
+
+	w.addressLock.Unlock()
+
+	w.utxoLock.Lock()
 
 	balance := uint64(0)
 	for _, utxos := range w.utxos {
@@ -97,6 +107,9 @@ func (w *Wallet) Prepare(ctx context.Context) error {
 			balance += utxo.UTXO.Value
 		}
 	}
+
+	w.utxoLock.Unlock()
+
 	logger.Info(ctx, "Bitcoin balance : %0.8f", float64(balance)/100000000.0)
 	return nil
 }
@@ -164,7 +177,7 @@ func (w *Wallet) AreHashesMonitored(hashes []bitcoin.Hash20) (bool, bitcoin.RawA
 	return false, bitcoin.RawAddress{}
 }
 
-func (w *Wallet) Serialize(buf *bytes.Buffer) error {
+func (w Wallet) Serialize(buf *bytes.Buffer) error {
 	w.hashLock.Lock()
 	defer w.hashLock.Unlock()
 

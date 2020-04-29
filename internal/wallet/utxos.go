@@ -1,10 +1,7 @@
 package wallet
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
-	"fmt"
 
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
 	"github.com/tokenized/smart-contract/pkg/logger"
@@ -222,66 +219,4 @@ func (w *Wallet) ProcessUTXOs(ctx context.Context, tx *wire.MsgTx, isFinal bool)
 	}
 
 	return nil
-}
-
-func (u UTXO) Serialize(buf *bytes.Buffer) error {
-	// Version
-	if err := binary.Write(buf, binary.LittleEndian, uint8(0)); err != nil {
-		return errors.Wrap(err, "version")
-	}
-
-	if err := u.UTXO.Write(buf); err != nil {
-		return errors.Wrap(err, "utxo")
-	}
-
-	if err := binary.Write(buf, binary.LittleEndian, u.KeyType); err != nil {
-		return errors.Wrap(err, "type")
-	}
-
-	if err := binary.Write(buf, binary.LittleEndian, u.KeyIndex); err != nil {
-		return errors.Wrap(err, "index")
-	}
-
-	if err := binary.Write(buf, binary.LittleEndian, u.Reserved); err != nil {
-		return errors.Wrap(err, "reserved")
-	}
-
-	return nil
-}
-
-func (u *UTXO) Deserialize(buf *bytes.Reader) error {
-	var version uint8
-	if err := binary.Read(buf, binary.LittleEndian, &version); err != nil {
-		return errors.Wrap(err, "version")
-	}
-
-	if version != 0 {
-		return fmt.Errorf("Unsupported version : %d", version)
-	}
-
-	if err := u.UTXO.Read(buf); err != nil {
-		return errors.Wrap(err, "utxo")
-	}
-
-	if err := binary.Read(buf, binary.LittleEndian, &u.KeyType); err != nil {
-		return errors.Wrap(err, "type")
-	}
-
-	if err := binary.Read(buf, binary.LittleEndian, &u.KeyIndex); err != nil {
-		return errors.Wrap(err, "index")
-	}
-
-	if err := binary.Read(buf, binary.LittleEndian, &u.Reserved); err != nil {
-		return errors.Wrap(err, "reserved")
-	}
-
-	return nil
-}
-
-func ConvertUTXOs(utxos []*UTXO) []bitcoin.UTXO {
-	result := make([]bitcoin.UTXO, 0, len(utxos))
-	for _, utxo := range utxos {
-		result = append(result, utxo.UTXO)
-	}
-	return result
 }

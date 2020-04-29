@@ -1,9 +1,7 @@
 package wallet
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
 	"fmt"
 
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
@@ -160,7 +158,7 @@ func (w *Wallet) MarkAddress(ctx context.Context, add *Address) error {
 	add.Used = true
 
 	if int(add.KeyIndex)+w.cfg.AddressGap >= len(w.addressesList[add.KeyType]) {
-		if err := w.ForwardScan(ctx, add.KeyType); err != nil {
+		if err := w.forwardScan(ctx, add.KeyType); err != nil {
 			return errors.Wrap(err, "forward scan")
 		}
 	}
@@ -168,7 +166,7 @@ func (w *Wallet) MarkAddress(ctx context.Context, add *Address) error {
 	return nil
 }
 
-func (w *Wallet) ForwardScan(ctx context.Context, t uint32) error {
+func (w *Wallet) forwardScan(ctx context.Context, t uint32) error {
 	if t >= KeyTypeCount {
 		return fmt.Errorf("Invalid address type : %d", t)
 	}
@@ -230,67 +228,15 @@ func (w *Wallet) ForwardScan(ctx context.Context, t uint32) error {
 			KeyIndex:  nextIndex,
 		}
 
+		w.hashLock.Lock()
 		for _, hash := range hashes {
 			w.hashes[hash] = ra
 			w.addressesMap[hash] = newAddress
 		}
+		w.hashLock.Unlock()
 		w.addressesList[t] = append(w.addressesList[t], newAddress)
 
 		nextIndex++
-	}
-
-	return nil
-}
-
-func (a Address) Serialize(buf *bytes.Buffer) error {
-	// Version
-	if err := binary.Write(buf, binary.LittleEndian, uint8(0)); err != nil {
-		return errors.Wrap(err, "version")
-	}
-
-	if err := a.Address.Serialize(buf); err != nil {
-		return errors.Wrap(err, "address")
-	}
-
-	if err := binary.Write(buf, binary.LittleEndian, a.KeyType); err != nil {
-		return errors.Wrap(err, "type")
-	}
-
-	if err := binary.Write(buf, binary.LittleEndian, a.KeyIndex); err != nil {
-		return errors.Wrap(err, "index")
-	}
-
-	if err := binary.Write(buf, binary.LittleEndian, a.Used); err != nil {
-		return errors.Wrap(err, "used")
-	}
-
-	return nil
-}
-
-func (a *Address) Deserialize(buf *bytes.Reader) error {
-	var version uint8
-	if err := binary.Read(buf, binary.LittleEndian, &version); err != nil {
-		return errors.Wrap(err, "version")
-	}
-
-	if version != 0 {
-		return fmt.Errorf("Unsupported version : %d", version)
-	}
-
-	if err := a.Address.Deserialize(buf); err != nil {
-		return errors.Wrap(err, "address")
-	}
-
-	if err := binary.Read(buf, binary.LittleEndian, &a.KeyType); err != nil {
-		return errors.Wrap(err, "type")
-	}
-
-	if err := binary.Read(buf, binary.LittleEndian, &a.KeyIndex); err != nil {
-		return errors.Wrap(err, "index")
-	}
-
-	if err := binary.Read(buf, binary.LittleEndian, &a.Used); err != nil {
-		return errors.Wrap(err, "used")
 	}
 
 	return nil

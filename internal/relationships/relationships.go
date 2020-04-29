@@ -8,6 +8,7 @@ import (
 	"github.com/tokenized/envelope/pkg/golang/envelope/v0"
 
 	"github.com/tokenized/relationship-example/internal/platform/config"
+	"github.com/tokenized/relationship-example/internal/platform/db"
 	"github.com/tokenized/relationship-example/internal/wallet"
 
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
@@ -23,6 +24,10 @@ import (
 	"github.com/pkg/errors"
 )
 
+const (
+	relationshipsKey = "relationships"
+)
+
 func NewRelationships(cfg *config.Config, wallet *wallet.Wallet, broadcastTx wallet.BroadcastTx) (*Relationships, error) {
 	result := &Relationships{
 		cfg:         cfg,
@@ -31,6 +36,32 @@ func NewRelationships(cfg *config.Config, wallet *wallet.Wallet, broadcastTx wal
 	}
 
 	return result, nil
+}
+
+func (rs *Relationships) Load(ctx context.Context, dbConn *db.DB) error {
+	b, err := dbConn.Fetch(ctx, relationshipsKey)
+	if err == nil {
+		if err := rs.Deserialize(bytes.NewReader(b)); err != nil {
+			return errors.Wrap(err, "deserialize wallet")
+		}
+	} else if err != db.ErrNotFound {
+		return errors.Wrap(err, "fetch wallet")
+	}
+
+	return nil
+}
+
+func (rs *Relationships) Save(ctx context.Context, dbConn *db.DB) error {
+	var buf bytes.Buffer
+	if err := rs.Serialize(&buf); err != nil {
+		return errors.Wrap(err, "serialize wallet")
+	}
+
+	if err := dbConn.Put(ctx, relationshipsKey, buf.Bytes()); err != nil {
+		return errors.Wrap(err, "put wallet")
+	}
+
+	return nil
 }
 
 func (rs *Relationships) InitiateRelationship(ctx context.Context,

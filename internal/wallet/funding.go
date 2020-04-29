@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/pkg/errors"
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
 	"github.com/tokenized/smart-contract/pkg/logger"
 	"github.com/tokenized/smart-contract/pkg/txbuilder"
 	"github.com/tokenized/smart-contract/pkg/wire"
+
+	"github.com/pkg/errors"
 )
 
 type BroadcastTx interface {
@@ -110,9 +111,13 @@ func (w *Wallet) AddKeyFunding(ctx context.Context, keyType, keyIndex uint32,
 		return fmt.Errorf("Address not found : %s %d", KeyTypeName[keyType], keyIndex)
 	}
 
-	fundingAmount := uint64(tx.EstimatedFee() * 2.0)
+	fundingAmount := tx.EstimatedFee() + uint64(float32(txbuilder.MaximumP2PKHInputSize)*w.cfg.FeeRate)*2
 	if fundingAmount < w.cfg.DustLimit {
 		fundingAmount = 2 * w.cfg.DustLimit
+	}
+
+	for _, output := range tx.MsgTx.TxOut {
+		fundingAmount += output.Value
 	}
 
 	// Add output to admin address for initial funding
