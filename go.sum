@@ -92,6 +92,8 @@ github.com/tokenized/envelope v0.2.2-0.20200428045658-3cdc322bc79d h1:jMXrePhnfH
 github.com/tokenized/envelope v0.2.2-0.20200428045658-3cdc322bc79d/go.mod h1:VbL6zLbcyoPe+fd1ss9z0VbTYeRER6Zp7oxJKJjYjUc=
 github.com/tokenized/envelope v0.2.2-0.20200429034414-65caa69baf89 h1:ukOG1uxFRew6M4VB9gYjsA3CG5eBRwz+t3AJKaBzZhI=
 github.com/tokenized/envelope v0.2.2-0.20200429034414-65caa69baf89/go.mod h1:O+dbfZiMYuYUmodMP7vGn9FZqtZeDuDWQLomyDNms4w=
+github.com/tokenized/envelope v0.2.2-0.20200430030742-ea2c0a760311 h1:2qzWLVSrV1QuXw6TiLR4YB84GVYel14xxuFs8rg6As4=
+github.com/tokenized/envelope v0.2.2-0.20200430030742-ea2c0a760311/go.mod h1:NPpMU3yddpFlUhXpHGjvsi/C8SGta3aWK7Ss6coNnDw=
 github.com/tokenized/smart-contract v0.2.2-0.20200103005916-b230b5e28e16/go.mod h1:3oWcq6AOuFrBBe/Vz1a9ucjM3kKSjjo8n2B1n+Sr+X0=
 github.com/tokenized/smart-contract v0.2.2-0.20200105215152-0ca6d7ce006b/go.mod h1:3oWcq6AOuFrBBe/Vz1a9ucjM3kKSjjo8n2B1n+Sr+X0=
 github.com/tokenized/smart-contract v0.2.2 h1:OgnTV1t6+aiG9u4pmle2hfTTwyHkdy/j/zFcFSEP3tY=
@@ -107,6 +109,10 @@ github.com/tokenized/smart-contract v0.2.3-0.20200428045545-75afbcd5191c h1:dSdL
 github.com/tokenized/smart-contract v0.2.3-0.20200428045545-75afbcd5191c/go.mod h1:Vr7VsqpYHPT+TOZuepR2iCjT7p1JIfG9uMqjcKCkzhM=
 github.com/tokenized/smart-contract v0.2.3-0.20200429050448-ca3145c5fa50 h1:7jsiDFk78kFMIWSb75gIQMoDW4hTM2M53EelDUWAC4w=
 github.com/tokenized/smart-contract v0.2.3-0.20200429050448-ca3145c5fa50/go.mod h1:Vr7VsqpYHPT+TOZuepR2iCjT7p1JIfG9uMqjcKCkzhM=
+github.com/tokenized/smart-contract v0.2.3-0.20200430030512-47837c8e0b0c h1:Jqze5vzQv8zNf/ik1eF/EV6TBakqPnWjhVjqaF/67g8=
+github.com/tokenized/smart-contract v0.2.3-0.20200430030512-47837c8e0b0c/go.mod h1:Vr7VsqpYHPT+TOZuepR2iCjT7p1JIfG9uMqjcKCkzhM=
+github.com/tokenized/smart-contract v0.2.3-0.20200430041243-e35600cf4fce h1:zWnsi6jVtcNAbQId0xh6c3Xqn3QYX687sNf7NzvWAaI=
+github.com/tokenized/smart-contract v0.2.3-0.20200430041243-e35600cf4fce/go.mod h1:Vr7VsqpYHPT+TOZuepR2iCjT7p1JIfG9uMqjcKCkzhM=
 github.com/tokenized/specification v0.2.2-0.20191219061451-ecd0fc17c3ca/go.mod h1:8QHhqLHxThlZ3hEGD69UhAuj/AChbCWLNUrr1YNk46E=
 github.com/tokenized/specification v0.2.3-0.20200331020322-b65a25099cf8 h1:NhRvirpo8qbZMFl7wEFGQKP6G5CF26KRmUi1eTvR4jo=
 github.com/tokenized/specification v0.2.3-0.20200331020322-b65a25099cf8/go.mod h1:2Zsv/mL98DWvoe8wjq5gbRnM2X4Ai7JeideRQ+Y1qCg=

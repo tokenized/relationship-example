@@ -8,6 +8,7 @@ import (
 	"github.com/tokenized/relationship-example/internal/wallet"
 
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
+	"github.com/tokenized/smart-contract/pkg/inspector"
 	"github.com/tokenized/smart-contract/pkg/logger"
 	"github.com/tokenized/smart-contract/pkg/rpcnode"
 	"github.com/tokenized/smart-contract/pkg/spynode"
@@ -62,7 +63,7 @@ func NewMockWallet(ctx context.Context, cfg *config.Config) (*wallet.Wallet, err
 		return nil, errors.Wrap(err, "prepare wallet")
 	}
 
-	ra, err := result.GetPaymentAddress(ctx)
+	ra, err := result.GetUnusedRawAddress(ctx, wallet.KeyTypeExternal)
 	if err != nil {
 		return nil, errors.Wrap(err, "get address")
 	}
@@ -117,4 +118,33 @@ func (mb *MockBroadcaster) BroadcastTx(ctx context.Context, tx *wire.MsgTx) erro
 	logger.Info(ctx, "Mock broadcasting tx : \n%s\n", tx.StringWithAddresses(mb.cfg.Net))
 	mb.Msgs = append(mb.Msgs, tx)
 	return nil
+}
+
+func CreateInspector(ctx context.Context, cfg *config.Config, tx *wire.MsgTx, txs []*wire.MsgTx) (*inspector.Transaction, error) {
+	itx, err := inspector.NewTransactionFromWire(ctx, tx, cfg.IsTest)
+	if err != nil {
+		return nil, err
+	}
+
+	itx.Inputs = nil
+	for _, input := range tx.TxIn {
+		ra, err := bitcoin.RawAddressFromUnlockingScript(input.SignatureScript)
+		if err == nil {
+			itx.Inputs = append(itx.Inputs, inspector.Input{Address: ra})
+		} else {
+			itx.Inputs = append(itx.Inputs, inspector.Input{})
+		}
+	}
+
+	itx.Outputs = nil
+	for _, output := range tx.TxOut {
+		ra, err := bitcoin.RawAddressFromLockingScript(output.PkScript)
+		if err == nil {
+			itx.Outputs = append(itx.Outputs, inspector.Output{Address: ra})
+		} else {
+			itx.Outputs = append(itx.Outputs, inspector.Output{})
+		}
+	}
+
+	return itx, nil
 }

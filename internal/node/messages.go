@@ -22,8 +22,9 @@ func (n *Node) ProcessMessage(ctx context.Context, itx *inspector.Transaction, i
 
 	switch payload := p.(type) {
 	case *messages.InitiateRelationship:
-		_, err := n.rs.ParseRelationshipInitiation(ctx, itx, message, payload, encryptionKey)
-		return err
+		return n.rs.ProcessInitiateRelationship(ctx, itx, message, payload, encryptionKey)
+	case *messages.AcceptRelationship:
+		return n.rs.ProcessAcceptRelationship(ctx, itx, message, payload)
 	}
 
 	return nil

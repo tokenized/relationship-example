@@ -24,13 +24,17 @@ type Relationships struct {
 // Relationship represents a relationship, a private communication channel between two or more
 //   parties.
 type Relationship struct {
-	KeyIndex      uint32
-	NextHash      bitcoin.Hash32
-	NextIndex     uint64
-	Seed          []byte
-	Flag          []byte
-	EncryptionKey bitcoin.Hash32
-	Members       []*Member
+	TxId           bitcoin.Hash32
+	KeyType        uint32
+	KeyIndex       uint32
+	NextHash       bitcoin.Hash32
+	NextIndex      uint64
+	Seed           []byte
+	Flag           []byte
+	EncryptionType uint32
+	EncryptionKey  bitcoin.Hash32
+	Accepted       bool
+	Members        []*Member
 }
 
 // Member represents a member of a relationship.
@@ -80,6 +84,14 @@ func (m *Member) Deserialize(buf *bytes.Reader) error {
 }
 
 func (r Relationship) Serialize(buf *bytes.Buffer) error {
+	if err := r.TxId.Serialize(buf); err != nil {
+		return errors.Wrap(err, "txid")
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, r.KeyType); err != nil {
+		return errors.Wrap(err, "key type")
+	}
+
 	if err := binary.Write(buf, binary.LittleEndian, r.KeyIndex); err != nil {
 		return errors.Wrap(err, "key index")
 	}
@@ -106,8 +118,16 @@ func (r Relationship) Serialize(buf *bytes.Buffer) error {
 		return errors.Wrap(err, "flag")
 	}
 
+	if err := binary.Write(buf, binary.LittleEndian, r.EncryptionType); err != nil {
+		return errors.Wrap(err, "encryption type")
+	}
+
 	if err := r.EncryptionKey.Serialize(buf); err != nil {
 		return errors.Wrap(err, "encryption key")
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, r.Accepted); err != nil {
+		return errors.Wrap(err, "accepted")
 	}
 
 	if err := binary.Write(buf, binary.LittleEndian, uint64(len(r.Members))); err != nil {
@@ -123,6 +143,14 @@ func (r Relationship) Serialize(buf *bytes.Buffer) error {
 }
 
 func (r *Relationship) Deserialize(buf *bytes.Reader) error {
+	if err := r.TxId.Deserialize(buf); err != nil {
+		return errors.Wrap(err, "txid")
+	}
+
+	if err := binary.Read(buf, binary.LittleEndian, &r.KeyType); err != nil {
+		return errors.Wrap(err, "key type")
+	}
+
 	if err := binary.Read(buf, binary.LittleEndian, &r.KeyIndex); err != nil {
 		return errors.Wrap(err, "key index")
 	}
@@ -152,8 +180,16 @@ func (r *Relationship) Deserialize(buf *bytes.Reader) error {
 		return errors.Wrap(err, "flag")
 	}
 
+	if err := binary.Read(buf, binary.LittleEndian, &r.EncryptionType); err != nil {
+		return errors.Wrap(err, "encryption type")
+	}
+
 	if err := r.EncryptionKey.Deserialize(buf); err != nil {
 		return errors.Wrap(err, "encryption key")
+	}
+
+	if err := binary.Read(buf, binary.LittleEndian, &r.Accepted); err != nil {
+		return errors.Wrap(err, "accepted")
 	}
 
 	var count uint64

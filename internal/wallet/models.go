@@ -16,6 +16,7 @@ type Address struct {
 	PublicKey bitcoin.PublicKey
 	KeyType   uint32
 	KeyIndex  uint32
+	KeyHash   *bitcoin.Hash32
 	Used      bool
 	Given     bool
 }
@@ -24,6 +25,7 @@ type UTXO struct {
 	UTXO     bitcoin.UTXO
 	KeyType  uint32
 	KeyIndex uint32
+	KeyHash  *bitcoin.Hash32
 	Reserved bool
 }
 
@@ -47,6 +49,20 @@ func (a Address) Serialize(buf *bytes.Buffer) error {
 
 	if err := binary.Write(buf, binary.LittleEndian, a.KeyIndex); err != nil {
 		return errors.Wrap(err, "index")
+	}
+
+	if a.KeyHash != nil {
+		if err := binary.Write(buf, binary.LittleEndian, true); err != nil {
+			return errors.Wrap(err, "key hash exists")
+		}
+
+		if err := a.KeyHash.Serialize(buf); err != nil {
+			return errors.Wrap(err, "key hash")
+		}
+	} else {
+		if err := binary.Write(buf, binary.LittleEndian, false); err != nil {
+			return errors.Wrap(err, "key hash exists")
+		}
 	}
 
 	if err := binary.Write(buf, binary.LittleEndian, a.Used); err != nil {
@@ -76,6 +92,20 @@ func (a *Address) Deserialize(buf *bytes.Reader) error {
 
 	if err := binary.Read(buf, binary.LittleEndian, &a.KeyIndex); err != nil {
 		return errors.Wrap(err, "index")
+	}
+
+	var keyExists bool
+	if err := binary.Read(buf, binary.LittleEndian, &keyExists); err != nil {
+		return errors.Wrap(err, "key hash exists")
+	}
+
+	if keyExists {
+		a.KeyHash = &bitcoin.Hash32{}
+		if err := a.KeyHash.Deserialize(buf); err != nil {
+			return errors.Wrap(err, "key hash")
+		}
+	} else {
+		a.KeyHash = nil
 	}
 
 	if err := binary.Read(buf, binary.LittleEndian, &a.Used); err != nil {
@@ -135,6 +165,20 @@ func (u UTXO) Serialize(buf *bytes.Buffer) error {
 		return errors.Wrap(err, "index")
 	}
 
+	if u.KeyHash != nil {
+		if err := binary.Write(buf, binary.LittleEndian, true); err != nil {
+			return errors.Wrap(err, "key hash exists")
+		}
+
+		if err := u.KeyHash.Serialize(buf); err != nil {
+			return errors.Wrap(err, "key hash")
+		}
+	} else {
+		if err := binary.Write(buf, binary.LittleEndian, false); err != nil {
+			return errors.Wrap(err, "key hash exists")
+		}
+	}
+
 	if err := binary.Write(buf, binary.LittleEndian, u.Reserved); err != nil {
 		return errors.Wrap(err, "reserved")
 	}
@@ -162,6 +206,20 @@ func (u *UTXO) Deserialize(buf *bytes.Reader) error {
 
 	if err := binary.Read(buf, binary.LittleEndian, &u.KeyIndex); err != nil {
 		return errors.Wrap(err, "index")
+	}
+
+	var keyExists bool
+	if err := binary.Read(buf, binary.LittleEndian, &keyExists); err != nil {
+		return errors.Wrap(err, "key hash exists")
+	}
+
+	if keyExists {
+		u.KeyHash = &bitcoin.Hash32{}
+		if err := u.KeyHash.Deserialize(buf); err != nil {
+			return errors.Wrap(err, "key hash")
+		}
+	} else {
+		u.KeyHash = nil
 	}
 
 	if err := binary.Read(buf, binary.LittleEndian, &u.Reserved); err != nil {

@@ -3,6 +3,7 @@ package command
 import (
 	"fmt"
 
+	"github.com/tokenized/relationship-example/internal/wallet"
 	"github.com/tokenized/relationship-example/pkg/client"
 
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
@@ -28,7 +29,7 @@ var commandReceive = &cobra.Command{
 
 		isRelationship, _ := c.Flags().GetBool(FlagRelationship)
 		if isRelationship {
-			ra, err := client.Wallet.GetRelationshipAddress(ctx)
+			ra, err := client.Wallet.GetUnusedRawAddress(ctx, wallet.KeyTypeRelateIn)
 			if err != nil {
 				logger.Fatal(ctx, "Failed to get address : %s", err)
 			}
@@ -36,7 +37,7 @@ var commandReceive = &cobra.Command{
 			fmt.Printf("Relationship address : %s\n", bitcoin.NewAddressFromRawAddress(ra,
 				client.Config.Net))
 		} else {
-			ra, err := client.Wallet.GetPaymentAddress(ctx)
+			ra, err := client.Wallet.GetUnusedRawAddress(ctx, wallet.KeyTypeExternal)
 			if err != nil {
 				logger.Fatal(ctx, "Failed to get address : %s", err)
 			}

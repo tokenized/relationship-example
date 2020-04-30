@@ -18,7 +18,25 @@ func (w *Wallet) GetKeyUTXOs(ctx context.Context, keyType, keyIndex uint32) ([]*
 	result := make([]*UTXO, 0)
 	for _, utxos := range w.utxos {
 		for _, utxo := range utxos {
-			if !utxo.Reserved && (utxo.KeyType == keyType && utxo.KeyIndex == keyIndex) {
+			if !utxo.Reserved && utxo.KeyHash == nil && utxo.KeyType == keyType &&
+				utxo.KeyIndex == keyIndex {
+				result = append(result, utxo)
+			}
+		}
+	}
+
+	return result, nil
+}
+
+func (w *Wallet) GetKeyHashUTXOs(ctx context.Context, keyType, keyIndex uint32, keyHash bitcoin.Hash32) ([]*UTXO, error) {
+	w.utxoLock.Lock()
+	defer w.utxoLock.Unlock()
+
+	result := make([]*UTXO, 0)
+	for _, utxos := range w.utxos {
+		for _, utxo := range utxos {
+			if !utxo.Reserved && utxo.KeyHash != nil && keyHash.Equal(utxo.KeyHash) &&
+				utxo.KeyType == keyType && utxo.KeyIndex == keyIndex {
 				result = append(result, utxo)
 			}
 		}
@@ -30,6 +48,9 @@ func (w *Wallet) GetKeyUTXOs(ctx context.Context, keyType, keyIndex uint32) ([]*
 func (w *Wallet) GetBitcoinUTXOs(ctx context.Context) ([]*UTXO, error) {
 	w.utxoLock.Lock()
 	defer w.utxoLock.Unlock()
+
+	// TODO UTXOs with hashes, from relationship derived keys need to be randomly used as bitcoin
+	//   funding because those keys should not be reused so there is no point in saving the UTXOs.
 
 	result := make([]*UTXO, 0)
 	for _, utxos := range w.utxos {
@@ -60,6 +81,12 @@ func (w *Wallet) GetInputKeys(ctx context.Context, tx *txbuilder.TxBuilder) ([]b
 				key, err := w.GetKey(ctx, utxo.KeyType, utxo.KeyIndex)
 				if err != nil {
 					return result, errors.Wrap(err, "get key")
+				}
+				if utxo.KeyHash != nil {
+					key, err = bitcoin.NextKey(key, *utxo.KeyHash)
+					if err != nil {
+						return result, errors.Wrap(err, "next key")
+					}
 				}
 				result = append(result, key)
 			}
@@ -175,7 +202,6 @@ func (w *Wallet) ProcessUTXOs(ctx context.Context, tx *wire.MsgTx, isFinal bool)
 
 	// Add new UTXOs
 	for index, output := range tx.TxOut {
-
 		ra, err := bitcoin.RawAddressFromLockingScript(output.PkScript)
 		if err != nil {
 			continue
@@ -201,6 +227,7 @@ func (w *Wallet) ProcessUTXOs(ctx context.Context, tx *wire.MsgTx, isFinal bool)
 				},
 				KeyType:  address.KeyType,
 				KeyIndex: address.KeyIndex,
+				KeyHash:  address.KeyHash,
 			}
 
 			if err := w.CreateUTXO(ctx, utxo); err != nil {

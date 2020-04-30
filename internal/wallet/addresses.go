@@ -10,30 +10,12 @@ import (
 	"github.com/pkg/errors"
 )
 
-const (
-	KeyTypeExternal  = uint32(0)
-	KeyTypeInternal  = uint32(1)
-	KeyTypeRelateOut = uint32(2)
-	KeyTypeRelateIn  = uint32(3)
-
-	KeyTypeCount = 4
-)
-
-var (
-	KeyTypeName = []string{
-		"External",
-		"Internal",
-		"Relate Out",
-		"Relate In",
-	}
-)
-
-// GetPaymentAddress returns an unused payment address.
-func (w *Wallet) GetPaymentAddress(ctx context.Context) (bitcoin.RawAddress, error) {
+// GetUnusedRawAddress returns an unused raw address of the specified type.
+func (w *Wallet) GetUnusedRawAddress(ctx context.Context, keyType uint32) (bitcoin.RawAddress, error) {
 	w.addressLock.Lock()
 	defer w.addressLock.Unlock()
 
-	for _, address := range w.addressesList[KeyTypeExternal] {
+	for _, address := range w.addressesList[keyType] {
 		if !address.Used && !address.Given {
 			address.Given = true
 			return address.Address, nil
@@ -43,12 +25,12 @@ func (w *Wallet) GetPaymentAddress(ctx context.Context) (bitcoin.RawAddress, err
 	return bitcoin.RawAddress{}, errors.New("Not Available")
 }
 
-// GetChangeAddress returns an unused change address.
-func (w *Wallet) GetChangeAddress(ctx context.Context) (*Address, error) {
+// GetUnusedAddress returns an unused address of the specified type.
+func (w *Wallet) GetUnusedAddress(ctx context.Context, keyType uint32) (*Address, error) {
 	w.addressLock.Lock()
 	defer w.addressLock.Unlock()
 
-	for _, address := range w.addressesList[KeyTypeInternal] {
+	for _, address := range w.addressesList[keyType] {
 		if !address.Used && !address.Given {
 			address.Given = true
 			return address, nil
@@ -56,53 +38,6 @@ func (w *Wallet) GetChangeAddress(ctx context.Context) (*Address, error) {
 	}
 
 	return nil, errors.New("Not Available")
-}
-
-// GetRelationshipAddress returns an unused relationship address. These are P2PK so that the sender
-//   knows the public key when creating the transaction to enable encryption, as well as to ensure
-//   the public key is included in the initial transaction so it can be easily decrypted by the
-//   proper parties.
-func (w *Wallet) GetRelationshipAddress(ctx context.Context) (bitcoin.RawAddress, error) {
-	w.addressLock.Lock()
-	defer w.addressLock.Unlock()
-
-	for _, address := range w.addressesList[KeyTypeRelateIn] {
-		if !address.Used && !address.Given {
-			address.Given = true
-			return address.Address, nil
-		}
-	}
-
-	return bitcoin.RawAddress{}, errors.New("Not Available")
-}
-
-func (w *Wallet) GetRelationshipKey(ctx context.Context) (bitcoin.Key, uint32, error) {
-	w.addressLock.Lock()
-	defer w.addressLock.Unlock()
-
-	for _, address := range w.addressesList[KeyTypeRelateOut] {
-		if !address.Used && !address.Given {
-			address.Given = true
-			key, err := w.GetKey(ctx, KeyTypeRelateOut, address.KeyIndex)
-			return key, address.KeyIndex, err
-		}
-	}
-
-	return bitcoin.Key{}, 0, errors.New("Not Available")
-}
-
-func (w *Wallet) GetKey(ctx context.Context, t, i uint32) (bitcoin.Key, error) {
-	parentKey, err := w.walletKey.ChildKey(t)
-	if err != nil {
-		return bitcoin.Key{}, errors.Wrap(err, "parent key")
-	}
-
-	key, err := parentKey.ChildKey(i)
-	if err != nil {
-		return bitcoin.Key{}, errors.Wrap(err, "address key")
-	}
-
-	return key.Key(bitcoin.InvalidNet), nil
 }
 
 // GetAddress gets an address by type and index.

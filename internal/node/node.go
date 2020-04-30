@@ -157,7 +157,7 @@ func (n *Node) ProcessTx(ctx context.Context, tx *wire.MsgTx) error {
 
 	// Process any tokenized actions
 	for index, _ := range itx.MsgTx.TxOut {
-		action, encryptionKey, err := n.wallet.DecryptActionDirect(ctx, itx.MsgTx, index)
+		action, encryptionKey, err := n.rs.DecryptAction(ctx, itx, index, flag)
 		if err != nil {
 			continue
 		}
