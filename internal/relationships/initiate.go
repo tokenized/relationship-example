@@ -51,6 +51,11 @@ func (rs *Relationships) InitiateRelationship(ctx context.Context,
 		NextIndex: 1,
 	}
 
+	r.NextKey, err = bitcoin.NextPublicKey(senderKey.PublicKey(), *hash)
+	if err != nil {
+		return nil, errors.Wrap(err, "next key")
+	}
+
 	if len(receivers) > 1 {
 		flagValue, err := bitcoin.GenerateSeedValue()
 		if err != nil {
@@ -61,11 +66,16 @@ func (rs *Relationships) InitiateRelationship(ctx context.Context,
 	}
 
 	for _, receiver := range receivers {
-		// Save
+		nextKey, err := bitcoin.NextPublicKey(receiver, *hash)
+		if err != nil {
+			return nil, errors.Wrap(err, "next key")
+		}
+
 		r.Members = append(r.Members, &Member{
 			BaseKey:   receiver,
 			NextHash:  *hash,
 			NextIndex: 1,
+			NextKey:   nextKey,
 		})
 	}
 
@@ -172,18 +182,13 @@ func (rs *Relationships) InitiateRelationship(ctx context.Context,
 	r.TxId = *tx.MsgTx.TxHash()
 	logger.Info(ctx, "Initiate TxId : %s", r.TxId.String())
 
-	nextKey, err := r.NextKey(senderKey)
+	nextAddress, err := r.NextKey.RawAddress()
 	if err != nil {
 		return nil, errors.Wrap(err, "next key")
 	}
 
-	nextAddress, err := nextKey.RawAddress()
-	if err != nil {
-		return nil, errors.Wrap(err, "next key")
-	}
-
-	if err := rs.wallet.AddIndependentKey(ctx, nextAddress, nextKey.PublicKey(), r.KeyType,
-		r.KeyIndex, r.NextHash); err != nil {
+	if err := rs.wallet.AddIndependentKey(ctx, nextAddress, r.NextKey, r.KeyType, r.KeyIndex,
+		r.NextHash); err != nil {
 		return nil, errors.Wrap(err, "add independent key")
 	}
 
@@ -227,7 +232,7 @@ func (rs *Relationships) ProcessInitiateRelationship(ctx context.Context,
 	// initiate.ProofOfIdentity
 	// initiate.ChannelParties
 
-	if len(message.SenderIndexes) == 0 {
+	if len(message.SenderIndexes) == 0 { // No sender indexes means use the first input
 		message.SenderIndexes = append(message.SenderIndexes, 0)
 	}
 
@@ -268,18 +273,18 @@ func (rs *Relationships) ProcessInitiateRelationship(ctx context.Context,
 				r.KeyIndex = ad.KeyIndex
 				keyFound = true
 
-				nextKey, err := bitcoin.NextPublicKey(publicKey, r.NextHash)
+				r.NextKey, err = bitcoin.NextPublicKey(publicKey, r.NextHash)
 				if err != nil {
 					return errors.Wrap(err, "next key")
 				}
 
-				nextAddress, err := nextKey.RawAddress()
+				nextAddress, err := r.NextKey.RawAddress()
 				if err != nil {
 					return errors.Wrap(err, "next key")
 				}
 
-				if err := rs.wallet.AddIndependentKey(ctx, nextAddress, nextKey, r.KeyType, r.KeyIndex,
-					r.NextHash); err != nil {
+				if err := rs.wallet.AddIndependentKey(ctx, nextAddress, r.NextKey, r.KeyType,
+					r.KeyIndex, r.NextHash); err != nil {
 					return errors.Wrap(err, "add independent key")
 				}
 
@@ -288,14 +293,20 @@ func (rs *Relationships) ProcessInitiateRelationship(ctx context.Context,
 		}
 
 		// Sender is someone else
+		nextKey, err := bitcoin.NextPublicKey(publicKey, *hash)
+		if err != nil {
+			return errors.Wrap(err, "next key")
+		}
+
 		r.Members = append(r.Members, &Member{
 			BaseKey:   publicKey,
 			NextHash:  *hash,
 			NextIndex: 1,
+			NextKey:   nextKey,
 		})
 	}
 
-	if len(message.ReceiverIndexes) == 0 {
+	if len(message.ReceiverIndexes) == 0 { // No receiver indexes means use the first input
 		message.ReceiverIndexes = append(message.ReceiverIndexes, 0)
 	}
 
@@ -330,18 +341,18 @@ func (rs *Relationships) ProcessInitiateRelationship(ctx context.Context,
 				r.KeyIndex = ad.KeyIndex
 				keyFound = true
 
-				nextKey, err := bitcoin.NextPublicKey(publicKey, r.NextHash)
+				r.NextKey, err = bitcoin.NextPublicKey(publicKey, r.NextHash)
 				if err != nil {
 					return errors.Wrap(err, "next key")
 				}
 
-				nextAddress, err := nextKey.RawAddress()
+				nextAddress, err := r.NextKey.RawAddress()
 				if err != nil {
 					return errors.Wrap(err, "next key")
 				}
 
-				if err := rs.wallet.AddIndependentKey(ctx, nextAddress, nextKey, r.KeyType, r.KeyIndex,
-					r.NextHash); err != nil {
+				if err := rs.wallet.AddIndependentKey(ctx, nextAddress, r.NextKey, r.KeyType,
+					r.KeyIndex, r.NextHash); err != nil {
 					return errors.Wrap(err, "add independent key")
 				}
 
@@ -349,10 +360,16 @@ func (rs *Relationships) ProcessInitiateRelationship(ctx context.Context,
 			}
 		}
 
+		nextKey, err := bitcoin.NextPublicKey(publicKey, *hash)
+		if err != nil {
+			return errors.Wrap(err, "next key")
+		}
+
 		r.Members = append(r.Members, &Member{
 			BaseKey:   publicKey,
 			NextHash:  *hash,
 			NextIndex: 1,
+			NextKey:   nextKey,
 		})
 	}
 

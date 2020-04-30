@@ -35,6 +35,9 @@ type Relationship struct {
 	EncryptionKey  bitcoin.Hash32
 	Accepted       bool
 	Members        []*Member
+
+	// Not serialized
+	NextKey bitcoin.PublicKey
 }
 
 // Member represents a member of a relationship.
@@ -45,6 +48,11 @@ type Member struct {
 	// Next expected hash to be used in a message
 	NextHash  bitcoin.Hash32
 	NextIndex uint64
+
+	Accepted bool
+
+	// Not serialized
+	NextKey bitcoin.PublicKey
 }
 
 func (m Member) Serialize(buf *bytes.Buffer) error {
@@ -58,6 +66,10 @@ func (m Member) Serialize(buf *bytes.Buffer) error {
 
 	if err := binary.Write(buf, binary.LittleEndian, m.NextIndex); err != nil {
 		return errors.Wrap(err, "next index")
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, m.Accepted); err != nil {
+		return errors.Wrap(err, "accepted")
 	}
 
 	return nil
@@ -78,6 +90,16 @@ func (m *Member) Deserialize(buf *bytes.Reader) error {
 
 	if err := binary.Read(buf, binary.LittleEndian, &m.NextIndex); err != nil {
 		return errors.Wrap(err, "next index")
+	}
+
+	if err := binary.Read(buf, binary.LittleEndian, &m.Accepted); err != nil {
+		return errors.Wrap(err, "accepted")
+	}
+
+	var err error
+	m.NextKey, err = bitcoin.NextPublicKey(m.BaseKey, m.NextHash)
+	if err != nil {
+		return errors.Wrap(err, "next key")
 	}
 
 	return nil

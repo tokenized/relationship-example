@@ -24,7 +24,7 @@ func (n *Node) ProcessMessage(ctx context.Context, itx *inspector.Transaction, i
 	case *messages.InitiateRelationship:
 		return n.rs.ProcessInitiateRelationship(ctx, itx, message, payload, encryptionKey)
 	case *messages.AcceptRelationship:
-		return n.rs.ProcessAcceptRelationship(ctx, itx, message, payload)
+		return n.rs.ProcessAcceptRelationship(ctx, itx, message, payload, flag)
 	}
 
 	return nil

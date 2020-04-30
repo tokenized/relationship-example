@@ -16,6 +16,10 @@ import (
 	"github.com/pkg/errors"
 )
 
+var (
+	ErrUnknownFlag = errors.New("Unknown Flag")
+)
+
 const (
 	relationshipsKey = "relationships"
 )
@@ -98,6 +102,19 @@ func (rs *Relationships) Load(ctx context.Context, dbConn *db.DB) error {
 		}
 	} else if err != db.ErrNotFound {
 		return errors.Wrap(err, "fetch wallet")
+	}
+
+	// Calculate relationship next key values
+	for _, r := range rs.Relationships {
+		key, err := rs.wallet.GetKey(ctx, r.KeyType, r.KeyIndex)
+		if err != nil {
+			return errors.Wrap(err, "get key")
+		}
+
+		r.NextKey, err = bitcoin.NextPublicKey(key.PublicKey(), r.NextHash)
+		if err != nil {
+			return errors.Wrap(err, "next key")
+		}
 	}
 
 	return nil
