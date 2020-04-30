@@ -115,6 +115,10 @@ func (n *Node) PreprocessTx(ctx context.Context, tx *wire.MsgTx) error {
 
 	logger.Info(ctx, "Pre-processing tx : %s", tx.TxHash().String())
 
+	if err := n.wallet.ProcessUTXOs(ctx, tx, true); err != nil {
+		return errors.Wrap(err, "process utxos")
+	}
+
 	return nil
 }
 
@@ -123,10 +127,6 @@ func (n *Node) ProcessTx(ctx context.Context, tx *wire.MsgTx) error {
 	defer n.processLock.Unlock()
 
 	logger.Info(ctx, "Processing tx : %s", tx.TxHash().String())
-
-	if err := n.wallet.ProcessUTXOs(ctx, tx, true); err != nil {
-		return errors.Wrap(err, "process utxos")
-	}
 
 	itx, err := inspector.NewBaseTransactionFromWire(ctx, tx)
 	if err != nil {

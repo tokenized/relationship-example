@@ -11,6 +11,24 @@ import (
 	"github.com/pkg/errors"
 )
 
+func (w *Wallet) FindUTXO(ctx context.Context, hash bitcoin.Hash32, index uint32) (*UTXO, error) {
+	w.utxoLock.Lock()
+	defer w.utxoLock.Unlock()
+
+	utxos, exists := w.utxos[hash]
+	if !exists {
+		return nil, nil
+	}
+
+	for _, utxo := range utxos {
+		if utxo.UTXO.Index == index {
+			return utxo, nil
+		}
+	}
+
+	return nil, nil
+}
+
 func (w *Wallet) GetKeyUTXOs(ctx context.Context, keyType, keyIndex uint32) ([]*UTXO, error) {
 	w.utxoLock.Lock()
 	defer w.utxoLock.Unlock()

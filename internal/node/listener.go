@@ -7,6 +7,7 @@ import (
 	"github.com/tokenized/smart-contract/pkg/logger"
 	"github.com/tokenized/smart-contract/pkg/spynode/handlers"
 	"github.com/tokenized/smart-contract/pkg/wire"
+	"github.com/tokenized/specification/dist/golang/protocol"
 )
 
 // Implement spynode Listener interface
@@ -30,9 +31,8 @@ func (n *Node) HandleBlock(ctx context.Context, msgType int, block *handlers.Blo
 func (n *Node) HandleTx(ctx context.Context, tx *wire.MsgTx) (bool, error) {
 	ctx = logger.ContextWithOutLogSubSystem(ctx)
 
-	// TODO Multi-key addresses might not contain our public key if not signed by us. --ce
-	// We might need to monitor utxos or something.
 	for index, input := range tx.TxIn {
+		// Check for owned public keys in unlock scripts.
 		pubkeys, err := bitcoin.PubKeysFromSigScript(input.SignatureScript)
 		if err != nil {
 			return false, err
@@ -50,7 +50,23 @@ func (n *Node) HandleTx(ctx context.Context, tx *wire.MsgTx) (bool, error) {
 		m, ra := n.wallet.AreHashesMonitored(pkhs)
 		if m {
 			address := bitcoin.NewAddressFromRawAddress(ra, n.cfg.Net)
-			logger.Info(ctx, "Found tx input %d for %s : %s", index, address.String(), tx.TxHash().String())
+			logger.Info(ctx, "Found tx input %d for %s : %s", index, address.String(),
+				tx.TxHash().String())
+			n.SetTx(tx)
+			if err := n.PreprocessTx(ctx, tx); err != nil {
+				logger.Error(ctx, "Failed preprocess : %s : %s", err, tx.TxHash().String())
+			}
+			return true, nil
+		}
+
+		// Check for owned utxos.
+		utxo, err := n.wallet.FindUTXO(ctx, input.PreviousOutPoint.Hash, input.PreviousOutPoint.Index)
+		if err != nil {
+			return false, err
+		}
+		if utxo != nil {
+			logger.Info(ctx, "Found tx input %d for utxo %s %d : %s", index,
+				utxo.UTXO.Hash.String(), utxo.UTXO.Index, tx.TxHash().String())
 			n.SetTx(tx)
 			if err := n.PreprocessTx(ctx, tx); err != nil {
 				logger.Error(ctx, "Failed preprocess : %s : %s", err, tx.TxHash().String())
@@ -60,6 +76,7 @@ func (n *Node) HandleTx(ctx context.Context, tx *wire.MsgTx) (bool, error) {
 	}
 
 	for index, output := range tx.TxOut {
+		// Check for owned public keys or public key hashes in locking scripts.
 		pkhs, err := bitcoin.PKHsFromLockingScript(output.PkScript)
 		if err != nil {
 			return false, err
@@ -68,12 +85,28 @@ func (n *Node) HandleTx(ctx context.Context, tx *wire.MsgTx) (bool, error) {
 		m, ra := n.wallet.AreHashesMonitored(pkhs)
 		if m {
 			address := bitcoin.NewAddressFromRawAddress(ra, n.cfg.Net)
-			logger.Info(ctx, "Found tx output %d for %s : %s", index, address.String(), tx.TxHash().String())
+			logger.Info(ctx, "Found tx output %d for %s : %s", index, address.String(),
+				tx.TxHash().String())
 			n.SetTx(tx)
 			if err := n.PreprocessTx(ctx, tx); err != nil {
 				logger.Error(ctx, "Failed preprocess : %s : %s", err, tx.TxHash().String())
 			}
 			return true, nil
+		}
+
+		// Check for flags for known relationships.
+		flag, err := protocol.DeserializeFlagOutputScript(output.PkScript)
+		if err == nil {
+			r := n.rs.FindRelationship(ctx, flag)
+			if r != nil {
+				logger.Info(ctx, "Found tx output %d for flag %x : %s", index, flag,
+					tx.TxHash().String())
+				n.SetTx(tx)
+				if err := n.PreprocessTx(ctx, tx); err != nil {
+					logger.Error(ctx, "Failed preprocess : %s : %s", err, tx.TxHash().String())
+				}
+				return true, nil
+			}
 		}
 	}
 
