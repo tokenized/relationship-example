@@ -74,6 +74,11 @@ func (w *Wallet) FindAddress(ctx context.Context, ra bitcoin.RawAddress) (*Addre
 		if result.Address.Equal(ra) {
 			return result, nil
 		}
+
+		publicKey, err := ra.GetPublicKey()
+		if err == nil && publicKey.Equal(result.PublicKey) {
+			return result, nil
+		}
 	}
 
 	return nil, nil

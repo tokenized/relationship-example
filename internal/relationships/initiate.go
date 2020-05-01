@@ -24,8 +24,10 @@ import (
 
 // InitiateRelationship creates and broadcasts an InitiateRelationship message to the receivers
 //   specified.
+// proofOfIdentity needs to be nil, or a proof of identity message like
+//   messages.IdentityOracleProofField or messages.PaymailProofField
 func (rs *Relationships) InitiateRelationship(ctx context.Context,
-	receivers []bitcoin.PublicKey) (*messages.InitiateRelationship, error) {
+	receivers []bitcoin.PublicKey, proofOfIdentity proto.Message) (*messages.InitiateRelationship, error) {
 
 	if len(receivers) == 0 {
 		return nil, errors.New("No receivers provided")
@@ -49,6 +51,7 @@ func (rs *Relationships) InitiateRelationship(ctx context.Context,
 		Seed:      seedValue.Bytes(),
 		NextHash:  *hash,
 		NextIndex: 1,
+		Accepted:  true,
 	}
 
 	r.NextKey, err = bitcoin.NextPublicKey(senderKey.PublicKey(), *hash)
@@ -79,30 +82,28 @@ func (rs *Relationships) InitiateRelationship(ctx context.Context,
 		})
 	}
 
-	// Public message fields
-	publicMessage := &actions.Message{
-		MessageCode: messages.CodeInitiateRelationship,
-	}
-	env, err := protocol.WrapAction(publicMessage, rs.cfg.IsTest)
-	if err != nil {
-		return nil, errors.Wrap(err, "wrap action")
-	}
-
-	// Convert to specific version of envelope
-	env0, ok := env.(*v0.Message)
-	if !ok {
-		return nil, errors.New("Unsupported envelope version")
-	}
-
 	// Private message fields
 	initiate := &messages.InitiateRelationship{
-		Type:      0, // Conversation
-		SeedValue: seedValue.Bytes(),
-		// FlagValue            []byte // Not needed for two party
-		ProofOfIdentityType: 2, // Identity oracle
-		// ProofOfIdentityType  uint32 // Skipping for now
-		// ProofOfIdentity      []byte
+		Type: 0, // Conversation
+		Seed: r.Seed,
+		Flag: r.Flag,
 		// ChannelParties       []*ChannelPartyField
+	}
+
+	if proofOfIdentity != nil {
+		switch proofOfIdentity.(type) {
+		case *messages.IdentityOracleProofField:
+			initiate.ProofOfIdentityType = 2
+		case *messages.PaymailProofField:
+			initiate.ProofOfIdentityType = 1
+		default:
+			return nil, errors.New("Unsupported proof of identity type")
+		}
+
+		initiate.ProofOfIdentity, err = proto.Marshal(proofOfIdentity)
+		if err != nil {
+			return nil, errors.Wrap(err, "marshal proof of identity")
+		}
 	}
 
 	if len(receivers) > 1 {
@@ -114,16 +115,13 @@ func (rs *Relationships) InitiateRelationship(ctx context.Context,
 		return nil, errors.Wrap(err, "serialize initiate")
 	}
 
-	privateMessage := &actions.Message{
-		MessagePayload: initiateBuf.Bytes(),
-	}
-
-	privatePayload, err := proto.Marshal(privateMessage)
-	if err != nil {
-		return nil, errors.Wrap(err, "serialize private")
-	}
-
 	tx := txbuilder.NewTxBuilder(rs.cfg.DustLimit, rs.cfg.FeeRate)
+	senderIndex := uint32(0)
+
+	// Public message fields
+	publicMessage := &actions.Message{
+		SenderIndexes: []uint32{senderIndex},
+	}
 
 	changeAddress, err := rs.wallet.GetUnusedAddress(ctx, wallet.KeyTypeInternal)
 	if err != nil {
@@ -137,17 +135,40 @@ func (rs *Relationships) InitiateRelationship(ctx context.Context,
 		return nil, errors.Wrap(err, "set change address")
 	}
 
-	senderIndex := uint32(len(tx.Inputs))
-
 	for _, receiver := range receivers {
 		receiverAddress, err := bitcoin.NewRawAddressPublicKey(receiver)
 		if err != nil {
 			return nil, errors.Wrap(err, "receiver address")
 		}
 
+		publicMessage.ReceiverIndexes = append(publicMessage.ReceiverIndexes,
+			uint32(len(tx.Outputs)))
 		if err := tx.AddDustOutput(receiverAddress, false); err != nil {
 			return nil, errors.Wrap(err, "add receiver")
 		}
+	}
+
+	// Create envelope
+	env, err := protocol.WrapAction(publicMessage, rs.cfg.IsTest)
+	if err != nil {
+		return nil, errors.Wrap(err, "wrap action")
+	}
+
+	// Convert to specific version of envelope
+	env0, ok := env.(*v0.Message)
+	if !ok {
+		return nil, errors.New("Unsupported envelope version")
+	}
+
+	// Private message fields
+	privateMessage := &actions.Message{
+		MessageCode:    messages.CodeInitiateRelationship,
+		MessagePayload: initiateBuf.Bytes(),
+	}
+
+	privatePayload, err := proto.Marshal(privateMessage)
+	if err != nil {
+		return nil, errors.Wrap(err, "serialize private")
 	}
 
 	encryptionKey, err := env0.AddEncryptedPayloadDirect(privatePayload, tx.MsgTx, senderIndex,
@@ -180,14 +201,8 @@ func (rs *Relationships) InitiateRelationship(ctx context.Context,
 	rs.Relationships = append(rs.Relationships, r)
 
 	r.TxId = *tx.MsgTx.TxHash()
-	logger.Info(ctx, "Initiate TxId : %s", r.TxId.String())
 
-	nextAddress, err := r.NextKey.RawAddress()
-	if err != nil {
-		return nil, errors.Wrap(err, "next key")
-	}
-
-	if err := rs.wallet.AddIndependentKey(ctx, nextAddress, r.NextKey, r.KeyType, r.KeyIndex,
+	if err := rs.wallet.AddIndependentKey(ctx, r.NextKey, r.KeyType, r.KeyIndex,
 		r.NextHash); err != nil {
 		return nil, errors.Wrap(err, "add independent key")
 	}
@@ -206,14 +221,14 @@ func (rs *Relationships) ProcessInitiateRelationship(ctx context.Context,
 		}
 	}
 
-	hash, _ := bitcoin.NewHash32(bitcoin.Sha256(initiate.SeedValue))
+	hash, _ := bitcoin.NewHash32(bitcoin.Sha256(initiate.Seed))
 	keyFound := false
 
 	r := &Relationship{
 		NextHash:       *hash,
 		NextIndex:      1,
-		Seed:           initiate.SeedValue,
-		Flag:           initiate.FlagValue,
+		Seed:           initiate.Seed,
+		Flag:           initiate.Flag,
 		EncryptionType: initiate.EncryptionType,
 	}
 
@@ -222,8 +237,7 @@ func (rs *Relationships) ProcessInitiateRelationship(ctx context.Context,
 	}
 
 	if len(message.SenderIndexes) > 1 {
-		return fmt.Errorf("More than one sender not supported : %d",
-			len(message.SenderIndexes))
+		return fmt.Errorf("More than one sender not supported : %d", len(message.SenderIndexes))
 	}
 
 	// TODO Other Fields --ce
@@ -278,12 +292,7 @@ func (rs *Relationships) ProcessInitiateRelationship(ctx context.Context,
 					return errors.Wrap(err, "next key")
 				}
 
-				nextAddress, err := r.NextKey.RawAddress()
-				if err != nil {
-					return errors.Wrap(err, "next key")
-				}
-
-				if err := rs.wallet.AddIndependentKey(ctx, nextAddress, r.NextKey, r.KeyType,
+				if err := rs.wallet.AddIndependentKey(ctx, r.NextKey, r.KeyType,
 					r.KeyIndex, r.NextHash); err != nil {
 					return errors.Wrap(err, "add independent key")
 				}
@@ -346,13 +355,8 @@ func (rs *Relationships) ProcessInitiateRelationship(ctx context.Context,
 					return errors.Wrap(err, "next key")
 				}
 
-				nextAddress, err := r.NextKey.RawAddress()
-				if err != nil {
-					return errors.Wrap(err, "next key")
-				}
-
-				if err := rs.wallet.AddIndependentKey(ctx, nextAddress, r.NextKey, r.KeyType,
-					r.KeyIndex, r.NextHash); err != nil {
+				if err := rs.wallet.AddIndependentKey(ctx, r.NextKey, r.KeyType, r.KeyIndex,
+					r.NextHash); err != nil {
 					return errors.Wrap(err, "add independent key")
 				}
 

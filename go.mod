@@ -12,7 +12,7 @@ require (
 	github.com/spf13/cobra v0.0.5
 	github.com/tokenized/envelope v0.2.2-0.20200430030742-ea2c0a760311
 	github.com/tokenized/smart-contract v0.2.3-0.20200430041243-e35600cf4fce
-	github.com/tokenized/specification v0.2.3-0.20200429034013-c34571b57316
+	github.com/tokenized/specification v0.2.3-0.20200430200904-7d9c30ffd18b
 	go.opencensus.io v0.22.2
 	launchpad.net/gocheck v0.0.0-20140225173054-000000000087 // indirect
 )

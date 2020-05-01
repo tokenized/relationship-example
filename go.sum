@@ -124,6 +124,8 @@ github.com/tokenized/specification v0.2.3-0.20200428045447-bcc9abf6a899 h1:EPRzg
 github.com/tokenized/specification v0.2.3-0.20200428045447-bcc9abf6a899/go.mod h1:jH3GzsLUUTFX0dXzp9c19uATbe2HXUj9q74AjQZtPRo=
 github.com/tokenized/specification v0.2.3-0.20200429034013-c34571b57316 h1:K7eMShpJSgfF1nHwZpS2bAg95V8++jHEo6fhVHKYbfw=
 github.com/tokenized/specification v0.2.3-0.20200429034013-c34571b57316/go.mod h1:jH3GzsLUUTFX0dXzp9c19uATbe2HXUj9q74AjQZtPRo=
+github.com/tokenized/specification v0.2.3-0.20200430200904-7d9c30ffd18b h1:/v+m7ybHeCk4KO82uGx4fydPmiJjqM8hvEK0XDKcQpQ=
+github.com/tokenized/specification v0.2.3-0.20200430200904-7d9c30ffd18b/go.mod h1:jH3GzsLUUTFX0dXzp9c19uATbe2HXUj9q74AjQZtPRo=
 github.com/tyler-smith/go-bip32 v0.0.0-20170922074101-2c9cfd177564 h1:NXXyQVeRVLK8Xu27/hkkjwVOZLk5v4ZBEvvMtqMqznM=
 github.com/tyler-smith/go-bip32 v0.0.0-20170922074101-2c9cfd177564/go.mod h1:0/YuQQF676+d4CMNclTqGUam1EDwz0B8o03K9pQqA3c=
 github.com/ugorji/go/codec v0.0.0-20181204163529-d75b2dcb6bc8/go.mod h1:VFNgLljTbGfSG7qAOspJ7OScBnGdDN/yBr0sguwnwf0=

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
+	"github.com/tokenized/smart-contract/pkg/logger"
 
 	"github.com/pkg/errors"
 )
@@ -11,8 +12,8 @@ import (
 const (
 	KeyTypeExternal  = uint32(0)
 	KeyTypeInternal  = uint32(1)
-	KeyTypeRelateOut = uint32(2) // Used for initiating relationships
-	KeyTypeRelateIn  = uint32(3) // Used for receiving relationship requests
+	KeyTypeRelateOut = uint32(2) // Outgoing - Used for initiating relationships
+	KeyTypeRelateIn  = uint32(3) // Incoming - Used for receiving relationship requests
 
 	KeyTypeCount = 4
 )
@@ -56,8 +57,16 @@ func (w *Wallet) GetKey(ctx context.Context, t, i uint32) (bitcoin.Key, error) {
 }
 
 // AddIndependentKey adds a key derived outside the wallet to wallet tx filtering.
-func (w *Wallet) AddIndependentKey(ctx context.Context, ra bitcoin.RawAddress, pk bitcoin.PublicKey,
+func (w *Wallet) AddIndependentKey(ctx context.Context, pk bitcoin.PublicKey,
 	keyType, keyIndex uint32, hash bitcoin.Hash32) error {
+
+	ra, err := pk.RawAddress()
+	if err != nil {
+		return errors.Wrap(err, "raw address")
+	}
+
+	logger.Info(ctx, "Adding independent key for address : %s",
+		bitcoin.NewAddressFromRawAddress(ra, w.cfg.Net).String())
 
 	hashes, err := ra.Hashes()
 	if err != nil {

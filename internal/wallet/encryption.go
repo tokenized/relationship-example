@@ -114,12 +114,16 @@ func (w *Wallet) DecryptActionDirect(ctx context.Context, tx *wire.MsgTx,
 
 		// Check if receiver keys are ours
 		for _, receiverAddress := range receiverAddresses {
+			logger.Info(ctx, "Decrypt checking receiver address : %s",
+				bitcoin.NewAddressFromRawAddress(receiverAddress, w.cfg.Net).String())
 			address, err := w.FindAddress(ctx, receiverAddress)
 			if err != nil {
 				return nil, bitcoin.Hash32{}, errors.Wrap(err, "find address")
 			}
 
 			if address != nil {
+				logger.Info(ctx, "Address found")
+
 				// Decrypt as receiver
 				key, err := w.GetKey(ctx, address.KeyType, address.KeyIndex)
 				if err != nil {
@@ -127,6 +131,7 @@ func (w *Wallet) DecryptActionDirect(ctx context.Context, tx *wire.MsgTx,
 				}
 
 				if address.KeyHash != nil {
+					logger.Info(ctx, "Adding hash")
 					key, err = bitcoin.NextKey(key, *address.KeyHash)
 					if err != nil {
 						return nil, bitcoin.Hash32{}, errors.Wrap(err, "next key")

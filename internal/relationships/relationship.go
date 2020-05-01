@@ -37,5 +37,9 @@ func (r *Relationship) IncrementHash(ctx context.Context, wallet *wallet.Wallet)
 		return errors.Wrap(err, "get key")
 	}
 
+	if err := wallet.AddIndependentKey(ctx, r.NextKey, r.KeyType, r.KeyIndex, r.NextHash); err != nil {
+		return errors.Wrap(err, "add independent key")
+	}
+
 	return nil
 }

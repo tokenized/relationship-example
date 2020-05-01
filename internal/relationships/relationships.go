@@ -10,6 +10,7 @@ import (
 
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
 	"github.com/tokenized/smart-contract/pkg/inspector"
+	"github.com/tokenized/smart-contract/pkg/logger"
 
 	"github.com/tokenized/specification/dist/golang/actions"
 
@@ -23,6 +24,15 @@ var (
 const (
 	relationshipsKey = "relationships"
 )
+
+// Relationships is a manager for all of the relationships associated with a wallet.
+type Relationships struct {
+	cfg         *config.Config
+	wallet      *wallet.Wallet
+	broadcastTx wallet.BroadcastTx
+
+	Relationships []*Relationship
+}
 
 func NewRelationships(cfg *config.Config, wallet *wallet.Wallet, broadcastTx wallet.BroadcastTx) (*Relationships, error) {
 	result := &Relationships{
@@ -54,6 +64,13 @@ func (rs *Relationships) DecryptAction(ctx context.Context, itx *inspector.Trans
 	// Find relationship
 	r := rs.FindRelationship(ctx, flag)
 	if r == nil { // Not related to a relationship with a indirect encryption
+		return rs.wallet.DecryptActionDirect(ctx, itx.MsgTx, index)
+	}
+
+	logger.Info(ctx, "Found relationship for decryption : %x", flag)
+
+	if r.EncryptionType == 0 { // Relationship uses direct encryption
+		logger.Info(ctx, "Relationship uses direct encryption : %x", flag)
 		return rs.wallet.DecryptActionDirect(ctx, itx.MsgTx, index)
 	}
 

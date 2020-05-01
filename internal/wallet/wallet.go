@@ -197,6 +197,7 @@ func (w Wallet) Serialize(buf *bytes.Buffer) error {
 	w.addressLock.Lock()
 	defer w.addressLock.Unlock()
 
+	// Write standard addresses
 	for t := 0; t < KeyTypeCount; t++ {
 		if err := binary.Write(buf, binary.LittleEndian, uint64(len(w.addressesList[t]))); err != nil {
 			return errors.Wrap(err, "addresses size")
@@ -205,6 +206,23 @@ func (w Wallet) Serialize(buf *bytes.Buffer) error {
 			if err := address.Serialize(buf); err != nil {
 				return errors.Wrap(err, "write address")
 			}
+		}
+	}
+
+	// Write hash derived addresses since they aren't put into the address lists.
+	hashAddresses := make([]*Address, 0)
+	for _, address := range w.addressesMap {
+		if address.KeyHash != nil {
+			hashAddresses = append(hashAddresses, address)
+		}
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, uint64(len(hashAddresses))); err != nil {
+		return errors.Wrap(err, "hash addresses size")
+	}
+	for _, address := range hashAddresses {
+		if err := address.Serialize(buf); err != nil {
+			return errors.Wrap(err, "write address")
 		}
 	}
 
@@ -255,6 +273,7 @@ func (w *Wallet) Deserialize(buf *bytes.Reader) error {
 	w.addressLock.Lock()
 	defer w.addressLock.Unlock()
 
+	// Read standard addresses
 	w.addressesList = make([][]*Address, KeyTypeCount)
 	for t := 0; t < KeyTypeCount; t++ {
 		if err := binary.Read(buf, binary.LittleEndian, &count); err != nil {
@@ -276,6 +295,25 @@ func (w *Wallet) Deserialize(buf *bytes.Reader) error {
 			for _, hash := range hashes {
 				w.addressesMap[hash] = &address
 			}
+		}
+	}
+
+	// Read hash derived addresses
+	if err := binary.Read(buf, binary.LittleEndian, &count); err != nil {
+		return errors.Wrap(err, "hash addresses size")
+	}
+	for i := uint64(0); i < count; i++ {
+		var address Address
+		if err := address.Deserialize(buf); err != nil {
+			return errors.Wrap(err, "read address")
+		}
+
+		hashes, err := address.Address.Hashes()
+		if err != nil {
+			return errors.Wrap(err, "raw address hashes")
+		}
+		for _, hash := range hashes {
+			w.addressesMap[hash] = &address
 		}
 	}
 

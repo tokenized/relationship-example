@@ -24,30 +24,33 @@ import (
 
 // AcceptRelationship creates and broadcasts an AcceptRelationship message corresponding to the
 //   relationship specified.
-func (rs *Relationships) AcceptRelationship(ctx context.Context, r *Relationship) (*messages.AcceptRelationship, error) {
+// proofOfIdentity needs to be nil, or a proof of identity message like
+//   messages.IdentityOracleProofField or messages.PaymailProofField
+func (rs *Relationships) AcceptRelationship(ctx context.Context, r *Relationship,
+	proofOfIdentity proto.Message) (*messages.AcceptRelationship, error) {
+
 	if r.Accepted {
 		return nil, errors.New("Already accepted")
 	}
 
-	// Public message fields
-	publicMessage := &actions.Message{
-		MessageCode: messages.CodeAcceptRelationship,
-	}
-	env, err := protocol.WrapAction(publicMessage, rs.cfg.IsTest)
-	if err != nil {
-		return nil, errors.Wrap(err, "wrap action")
-	}
-
-	// Convert to specific version of envelope
-	env0, ok := env.(*v0.Message)
-	if !ok {
-		return nil, errors.New("Unsupported envelope version")
-	}
-
 	// Private message fields
-	accept := &messages.AcceptRelationship{
-		ProofOfIdentityType: 2, // Identity oracle
-		// ProofOfIdentity      []byte
+	accept := &messages.AcceptRelationship{}
+
+	if proofOfIdentity != nil {
+		switch proofOfIdentity.(type) {
+		case *messages.IdentityOracleProofField:
+			accept.ProofOfIdentityType = 2
+		case *messages.PaymailProofField:
+			accept.ProofOfIdentityType = 1
+		default:
+			return nil, errors.New("Unsupported proof of identity type")
+		}
+
+		var err error
+		accept.ProofOfIdentity, err = proto.Marshal(proofOfIdentity)
+		if err != nil {
+			return nil, errors.Wrap(err, "marshal proof of identity")
+		}
 	}
 
 	var acceptBuf bytes.Buffer
@@ -55,17 +58,13 @@ func (rs *Relationships) AcceptRelationship(ctx context.Context, r *Relationship
 		return nil, errors.Wrap(err, "serialize accept")
 	}
 
-	privateMessage := &actions.Message{
-		MessagePayload: acceptBuf.Bytes(),
-	}
-
-	privatePayload, err := proto.Marshal(privateMessage)
-	if err != nil {
-		return nil, errors.Wrap(err, "serialize private")
-	}
-
 	tx := txbuilder.NewTxBuilder(rs.cfg.DustLimit, rs.cfg.FeeRate)
 	senderIndex := uint32(0)
+
+	// Public message fields
+	publicMessage := &actions.Message{
+		SenderIndexes: []uint32{senderIndex},
+	}
 
 	changeAddress, err := rs.wallet.GetUnusedAddress(ctx, wallet.KeyTypeInternal)
 	if err != nil {
@@ -87,13 +86,9 @@ func (rs *Relationships) AcceptRelationship(ctx context.Context, r *Relationship
 	if err != nil {
 		return nil, errors.Wrap(err, "next key")
 	}
-	nextAddress, err := nextKey.RawAddress()
-	if err != nil {
-		return nil, errors.Wrap(err, "next key")
-	}
 
+	receivers := make([]bitcoin.PublicKey, 0, len(r.Members))
 	if r.EncryptionType == 0 { // direct encryption
-		receivers := make([]bitcoin.PublicKey, 0, len(r.Members))
 		for _, m := range r.Members {
 			receivers = append(receivers, m.NextKey)
 
@@ -103,14 +98,40 @@ func (rs *Relationships) AcceptRelationship(ctx context.Context, r *Relationship
 				return nil, errors.Wrap(err, "receiver address")
 			}
 
-			privateMessage.ReceiverIndexes = append(privateMessage.ReceiverIndexes,
+			publicMessage.ReceiverIndexes = append(publicMessage.ReceiverIndexes,
 				uint32(len(tx.Outputs)))
 			if err := tx.AddDustOutput(receiverAddress, false); err != nil {
 				return nil, errors.Wrap(err, "add receiver")
 			}
 		}
+	}
 
-		if _, err := env0.AddEncryptedPayloadDirect(privatePayload, tx.MsgTx, senderIndex, nextKey, receivers); err != nil {
+	// Create envelope
+	env, err := protocol.WrapAction(publicMessage, rs.cfg.IsTest)
+	if err != nil {
+		return nil, errors.Wrap(err, "wrap action")
+	}
+
+	// Convert to specific version of envelope
+	env0, ok := env.(*v0.Message)
+	if !ok {
+		return nil, errors.New("Unsupported envelope version")
+	}
+
+	// Private message fields
+	privateMessage := &actions.Message{
+		MessageCode:    messages.CodeAcceptRelationship,
+		MessagePayload: acceptBuf.Bytes(),
+	}
+
+	privatePayload, err := proto.Marshal(privateMessage)
+	if err != nil {
+		return nil, errors.Wrap(err, "serialize private")
+	}
+
+	if r.EncryptionType == 0 { // direct encryption
+		if _, err := env0.AddEncryptedPayloadDirect(privatePayload, tx.MsgTx, senderIndex, nextKey,
+			receivers); err != nil {
 			return nil, errors.Wrap(err, "add direct encrypted payload")
 		}
 	} else {
@@ -140,8 +161,8 @@ func (rs *Relationships) AcceptRelationship(ctx context.Context, r *Relationship
 		return nil, errors.Wrap(err, "add message op return")
 	}
 
-	if err := rs.wallet.AddIndependentKey(ctx, nextAddress, nextKey.PublicKey(), r.KeyType,
-		r.KeyIndex, r.NextHash); err != nil {
+	if err := rs.wallet.AddIndependentKey(ctx, nextKey.PublicKey(), r.KeyType, r.KeyIndex,
+		r.NextHash); err != nil {
 		return nil, errors.Wrap(err, "add independent key")
 	}
 
@@ -219,13 +240,7 @@ func (rs *Relationships) ProcessAcceptRelationship(ctx context.Context, itx *ins
 				return errors.Wrap(err, "next key")
 			}
 
-			// Ensure next key is being monitored.
-			nextAddress, err := nextKey.RawAddress()
-			if err != nil {
-				return errors.Wrap(err, "next key")
-			}
-
-			if err := rs.wallet.AddIndependentKey(ctx, nextAddress, nextKey, r.KeyType, r.KeyIndex,
+			if err := rs.wallet.AddIndependentKey(ctx, nextKey, r.KeyType, r.KeyIndex,
 				r.NextHash); err != nil {
 				return errors.Wrap(err, "add independent key")
 			}

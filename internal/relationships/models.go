@@ -4,22 +4,10 @@ import (
 	"bytes"
 	"encoding/binary"
 
-	"github.com/tokenized/relationship-example/internal/platform/config"
-	"github.com/tokenized/relationship-example/internal/wallet"
-
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
 
 	"github.com/pkg/errors"
 )
-
-// Relationships is a manager for all of the relationships associated with a wallet.
-type Relationships struct {
-	cfg         *config.Config
-	wallet      *wallet.Wallet
-	broadcastTx wallet.BroadcastTx
-
-	Relationships []*Relationship
-}
 
 // Relationship represents a relationship, a private communication channel between two or more
 //   parties.
