@@ -3,6 +3,7 @@ package relationships
 import (
 	"bytes"
 	"context"
+	"sync"
 
 	"github.com/tokenized/relationship-example/internal/platform/config"
 	"github.com/tokenized/relationship-example/internal/platform/db"
@@ -30,6 +31,7 @@ type Relationships struct {
 	cfg         *config.Config
 	wallet      *wallet.Wallet
 	broadcastTx wallet.BroadcastTx
+	lock        sync.Mutex
 
 	Relationships []*Relationship
 }
@@ -45,6 +47,9 @@ func NewRelationships(cfg *config.Config, wallet *wallet.Wallet, broadcastTx wal
 }
 
 func (rs *Relationships) FindRelationship(ctx context.Context, flag []byte) *Relationship {
+	rs.lock.Lock()
+	defer rs.lock.Unlock()
+
 	for _, r := range rs.Relationships {
 		if bytes.Equal(r.Flag, flag) {
 			return r
@@ -56,6 +61,8 @@ func (rs *Relationships) FindRelationship(ctx context.Context, flag []byte) *Rel
 
 func (rs *Relationships) DecryptAction(ctx context.Context, itx *inspector.Transaction, index int,
 	flag []byte) (actions.Action, bitcoin.Hash32, error) {
+	rs.lock.Lock()
+	defer rs.lock.Unlock()
 
 	if len(flag) == 0 { // Not related to a relationship with a indirect encryption
 		return rs.wallet.DecryptActionDirect(ctx, itx.MsgTx, index)
@@ -114,6 +121,9 @@ func (rs *Relationships) DecryptAction(ctx context.Context, itx *inspector.Trans
 }
 
 func (rs *Relationships) Load(ctx context.Context, dbConn *db.DB) error {
+	rs.lock.Lock()
+	defer rs.lock.Unlock()
+
 	b, err := dbConn.Fetch(ctx, relationshipsKey)
 	if err == nil {
 		if err := rs.Deserialize(bytes.NewReader(b)); err != nil {
@@ -140,6 +150,9 @@ func (rs *Relationships) Load(ctx context.Context, dbConn *db.DB) error {
 }
 
 func (rs *Relationships) Save(ctx context.Context, dbConn *db.DB) error {
+	rs.lock.Lock()
+	defer rs.lock.Unlock()
+
 	var buf bytes.Buffer
 	if err := rs.Serialize(&buf); err != nil {
 		return errors.Wrap(err, "serialize wallet")

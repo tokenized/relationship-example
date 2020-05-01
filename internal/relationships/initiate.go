@@ -54,6 +54,8 @@ func (rs *Relationships) InitiateRelationship(ctx context.Context,
 		Accepted:  true,
 	}
 
+	logger.Info(ctx, "Initiating relationship : %x", r.Seed)
+
 	r.NextKey, err = bitcoin.NextPublicKey(senderKey.PublicKey(), *hash)
 	if err != nil {
 		return nil, errors.Wrap(err, "next key")
@@ -199,7 +201,9 @@ func (rs *Relationships) InitiateRelationship(ctx context.Context,
 		return nil, errors.Wrap(err, "add key funding")
 	}
 
+	rs.lock.Lock()
 	rs.Relationships = append(rs.Relationships, r)
+	rs.lock.Unlock()
 
 	r.TxId = *tx.MsgTx.TxHash()
 
@@ -382,7 +386,11 @@ func (rs *Relationships) ProcessInitiateRelationship(ctx context.Context,
 		return errors.New("Not a member of relationship")
 	}
 
+	rs.lock.Lock()
 	rs.Relationships = append(rs.Relationships, r)
+	rs.lock.Unlock()
+
+	logger.Info(ctx, "New relationship : %x", r.Seed)
 
 	return nil
 }

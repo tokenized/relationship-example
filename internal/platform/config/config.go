@@ -11,9 +11,10 @@ import (
 
 // EnvironmentConfig is used to hold all runtime configuration.
 type EnvironmentConfig struct {
-	Key     string `envconfig:"XKEY" json:"XKEY"`
-	Entity  string `envconfig:"ENTITY" json:"ENTITY"`
-	Bitcoin struct {
+	Key         string `envconfig:"XKEY" json:"XKEY"`
+	Entity      string `envconfig:"ENTITY" json:"ENTITY"`
+	CommandPort uint16 `default:"12483" envconfig:"PORT" json:"PORT"`
+	Bitcoin     struct {
 		Network    string  `default:"mainnet" envconfig:"BITCOIN_CHAIN" json:"BITCOIN_CHAIN"`
 		IsTest     bool    `default:"true" envconfig:"IS_TEST" json:"IS_TEST"`
 		DustLimit  uint64  `default:"546" envconfig:"DUST_LIMIT" json:"DUST_LIMIT"`
@@ -99,15 +100,18 @@ type Config struct {
 	FeeRate    float32
 	AddressGap int
 	WalletPath string
+
+	CommandPort uint16
 }
 
 func (c EnvironmentConfig) Config() (*Config, error) {
 	result := &Config{
-		IsTest:     c.Bitcoin.IsTest,
-		DustLimit:  c.Bitcoin.DustLimit,
-		FeeRate:    c.Bitcoin.FeeRate,
-		AddressGap: c.Bitcoin.AddressGap,
-		WalletPath: c.Bitcoin.WalletPath,
+		IsTest:      c.Bitcoin.IsTest,
+		DustLimit:   c.Bitcoin.DustLimit,
+		FeeRate:     c.Bitcoin.FeeRate,
+		AddressGap:  c.Bitcoin.AddressGap,
+		WalletPath:  c.Bitcoin.WalletPath,
+		CommandPort: c.CommandPort,
 	}
 
 	if len(c.Entity) > 0 {

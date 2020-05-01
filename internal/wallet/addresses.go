@@ -15,6 +15,10 @@ func (w *Wallet) GetUnusedRawAddress(ctx context.Context, keyType uint32) (bitco
 	w.addressLock.Lock()
 	defer w.addressLock.Unlock()
 
+	if keyType >= KeyTypeCount {
+		return bitcoin.RawAddress{}, fmt.Errorf("Key type out of range : %d", keyType)
+	}
+
 	for _, address := range w.addressesList[keyType] {
 		if !address.Used && !address.Given {
 			address.Given = true

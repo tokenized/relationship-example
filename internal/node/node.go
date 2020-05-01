@@ -2,9 +2,9 @@ package node
 
 import (
 	"context"
+	"net"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/tokenized/relationship-example/internal/platform/config"
 	"github.com/tokenized/relationship-example/internal/platform/db"
@@ -36,6 +36,10 @@ type Node struct {
 	processLock sync.Mutex
 	stop        atomic.Value
 	isInSync    atomic.Value
+
+	netListener net.Listener
+	netConns    []net.Conn
+	netLock     sync.Mutex
 }
 
 func NewNode(cfg *config.Config, masterDB *db.DB, wallet *wallet.Wallet, rpc *rpcnode.RPCNode,
@@ -62,19 +66,41 @@ func NewNode(cfg *config.Config, masterDB *db.DB, wallet *wallet.Wallet, rpc *rp
 }
 
 func (n *Node) Run(ctx context.Context) error {
-	for {
-		time.Sleep(100 * time.Millisecond)
-		val := n.stop.Load()
-		s, ok := val.(bool)
-		if !ok || s {
-			break
-		}
+	// for {
+	// 	time.Sleep(100 * time.Millisecond)
+	// 	val := n.stop.Load()
+	// 	s, ok := val.(bool)
+	// 	if !ok || s {
+	// 		break
+	// 	}
+	// }
+
+	// return nil
+
+	commandErr := n.RunCommandServer(ctx)
+	if commandErr != nil {
+		logger.Error(ctx, "Command server returned in error : %s", commandErr)
 	}
 
-	return n.Save(ctx)
+	saveErr := n.Save(ctx)
+	if saveErr != nil {
+		logger.Error(ctx, "Failed to save node : %s", saveErr)
+	}
+
+	if commandErr != nil {
+		return commandErr
+	}
+	return saveErr
 }
 
 func (n *Node) Stop(ctx context.Context) error {
+	n.netLock.Lock()
+	n.netListener.Close()
+	for _, conn := range n.netConns {
+		conn.Close()
+	}
+	n.netLock.Unlock()
+
 	n.stop.Store(true)
 	return nil
 }
@@ -174,12 +200,18 @@ func (n *Node) ProcessTx(ctx context.Context, tx *wire.MsgTx) error {
 }
 
 func (n *Node) BroadcastTx(ctx context.Context, tx *wire.MsgTx) error {
+	logger.Info(ctx, "Broadcasting Tx : \n%s\n", tx.StringWithAddresses(n.cfg.Net))
+
 	if err := n.spy.BroadcastTx(ctx, tx); err != nil {
 		return errors.Wrap(err, "broadcast tx")
 	}
 
 	if err := n.spy.HandleTx(ctx, tx); err != nil {
 		return errors.Wrap(err, "handle tx")
+	}
+
+	if err := n.rpc.SaveTX(tx); err != nil {
+		return errors.Wrap(err, "save rpc tx")
 	}
 
 	return nil

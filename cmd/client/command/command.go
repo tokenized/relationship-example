@@ -1,6 +1,7 @@
 package command
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -79,4 +80,8 @@ func dumpJSON(o interface{}) error {
 	fmt.Printf("```\n%s\n```\n\n", js)
 
 	return nil
+}
+
+func isError(response []byte) bool {
+	return len(response) >= 5 && bytes.Equal(response[:5], []byte("err: "))
 }
