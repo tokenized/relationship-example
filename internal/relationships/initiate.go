@@ -108,6 +108,7 @@ func (rs *Relationships) InitiateRelationship(ctx context.Context,
 
 	if len(receivers) > 1 {
 		initiate.EncryptionType = 1
+		r.EncryptionType = 1
 	}
 
 	var initiateBuf bytes.Buffer

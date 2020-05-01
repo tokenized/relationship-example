@@ -2,10 +2,8 @@ package relationships
 
 import (
 	"bytes"
-	"context"
 	"testing"
 
-	"github.com/tokenized/relationship-example/internal/platform/config"
 	"github.com/tokenized/relationship-example/internal/platform/tests"
 	"github.com/tokenized/relationship-example/internal/wallet"
 
@@ -14,7 +12,6 @@ import (
 	"github.com/tokenized/specification/dist/golang/protocol"
 
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
-	"github.com/tokenized/smart-contract/pkg/inspector"
 	"github.com/tokenized/smart-contract/pkg/logger"
 )
 
@@ -601,122 +598,6 @@ func TestAcceptIndirect(t *testing.T) {
 	}
 }
 
-func decryptMessage(t *testing.T, ctx context.Context, cfg *config.Config, rs *Relationships,
-	broadcastTx *tests.MockBroadcaster) (*inspector.Transaction, *actions.Message, bitcoin.Hash32, []byte) {
-
-	if len(broadcastTx.Msgs) == 0 {
-		t.Fatalf("No txs broadcast")
-	}
-
-	tx := broadcastTx.Msgs[len(broadcastTx.Msgs)-1]
-	broadcastTx.Msgs = nil
-
-	itx, err := tests.CreateInspector(ctx, cfg, tx, nil)
-	if err != nil {
-		t.Fatalf("Failed to create transaction : %s", err)
-	}
-
-	var flag []byte
-	for _, output := range tx.TxOut {
-		f, err := protocol.DeserializeFlagOutputScript(output.PkScript)
-		if err == nil {
-			flag = f
-			break
-		}
-	}
-
-	for index, _ := range tx.TxOut {
-		action, encryptionKey, err := rs.DecryptAction(ctx, itx, index, flag)
-		if err != nil {
-			continue
-		}
-
-		message, ok := action.(*actions.Message)
-		if !ok {
-			continue
-		}
-
-		return itx, message, encryptionKey, flag
-	}
-
-	t.Fatalf("Didn't find initiate message")
-	return nil, nil, bitcoin.Hash32{}, nil
-}
-
-func createRelationship(t *testing.T, ctx context.Context, cfg *config.Config,
-	sendWallet *wallet.Wallet, sendRS *Relationships, sendBroadcastTx *tests.MockBroadcaster,
-	receiveWallet *wallet.Wallet, receiveRS *Relationships, receiveBroadcastTx *tests.MockBroadcaster) {
-
-	// Initiate Relationship ***********************************************************************
-	receiveAddress, err := receiveWallet.GetUnusedAddress(ctx, wallet.KeyTypeRelateIn)
-	if err != nil {
-		t.Fatalf("Failed to get relationships address : %s", err)
-	}
-
-	logger.Info(ctx, "Send initiate **************************************************************")
-
-	poi := &messages.IdentityOracleProofField{}
-
-	_, err = sendRS.InitiateRelationship(ctx, []bitcoin.PublicKey{receiveAddress.PublicKey}, poi)
-	if err != nil {
-		t.Fatalf("Failed to initiate relationship : %s", err)
-	}
-
-	itx, message, encryptionKey, flag := decryptMessage(t, ctx, cfg, receiveRS, sendBroadcastTx)
-
-	if message.MessageCode != messages.CodeInitiateRelationship {
-		t.Fatalf("Not an initiate message : %d", message.MessageCode)
-	}
-
-	p, err := messages.Deserialize(message.MessageCode, message.MessagePayload)
-	if err != nil {
-		t.Fatalf("Failed to deserialize message payload : %s", err)
-	}
-
-	initiate, ok := p.(*messages.InitiateRelationship)
-	if !ok {
-		t.Fatalf("Failed to convert initiate : %s", err)
-	}
-
-	logger.Info(ctx, "Process initiate ***********************************************************")
-	err = receiveRS.ProcessInitiateRelationship(ctx, itx, message, initiate, encryptionKey)
-	if err != nil {
-		t.Fatalf("Failed to process initiate : %s", err)
-	}
-
-	// Accept Relationship *************************************************************************
-	logger.Info(ctx, "Send accept ****************************************************************")
-
-	poi = &messages.IdentityOracleProofField{}
-
-	_, err = receiveRS.AcceptRelationship(ctx, receiveRS.Relationships[0], poi)
-	if err != nil {
-		t.Fatalf("Failed to accept relationship : %s", err)
-	}
-
-	itx, message, encryptionKey, flag = decryptMessage(t, ctx, cfg, sendRS, receiveBroadcastTx)
-
-	if message.MessageCode != messages.CodeAcceptRelationship {
-		t.Fatalf("Not an accept message : %d", message.MessageCode)
-	}
-
-	p, err = messages.Deserialize(message.MessageCode, message.MessagePayload)
-	if err != nil {
-		t.Fatalf("Failed to deserialize message payload : %s", err)
-	}
-
-	accept, ok := p.(*messages.AcceptRelationship)
-	if !ok {
-		t.Fatalf("Failed to convert accept : %s", err)
-	}
-
-	logger.Info(ctx, "Process accept *************************************************************")
-	err = sendRS.ProcessAcceptRelationship(ctx, itx, message, accept, flag)
-	if err != nil {
-		t.Fatalf("Failed to process accept : %s", err)
-	}
-}
-
 func TestMessageDirect(t *testing.T) {
 	ctx := tests.Context()
 	cfg := tests.NewMockConfig()
@@ -746,21 +627,90 @@ func TestMessageDirect(t *testing.T) {
 	}
 
 	createRelationship(t, ctx, cfg, sendWallet, sendRS, sendBroadcastTx, receiveWallet, receiveRS,
-		receiveBroadcastTx)
+		receiveBroadcastTx, nil)
 
 	logger.Info(ctx, "Sending private message ****************************************************")
 
-	sra, err := sendRS.Relationships[0].NextKey.RawAddress()
-	if err != nil {
-		t.Fatalf("Failed to generate sender next address : %s", err)
+	sendPrivateMessage := messages.PrivateMessage{
+		Subject: "Sample encrypted message",
 	}
-	logger.Info(ctx, "Sender next address : %s", bitcoin.NewAddressFromRawAddress(sra, cfg.Net).String())
 
-	rra, err := receiveRS.Relationships[0].NextKey.RawAddress()
-	if err != nil {
-		t.Fatalf("Failed to generate sender next address : %s", err)
+	var pmBuf bytes.Buffer
+	if err := sendPrivateMessage.Serialize(&pmBuf); err != nil {
+		t.Fatalf("Failed to serialize private message : %s", err)
 	}
-	logger.Info(ctx, "Receiver next address : %s", bitcoin.NewAddressFromRawAddress(rra, cfg.Net).String())
+
+	sendMessage := &actions.Message{
+		MessageCode:    messages.CodePrivateMessage,
+		MessagePayload: pmBuf.Bytes(),
+	}
+
+	err = sendRS.SendMessage(ctx, sendRS.Relationships[0], sendMessage)
+	if err != nil {
+		t.Fatalf("Failed to send message : %s", err)
+	}
+
+	_, message, _, _ := decryptMessage(t, ctx, cfg, receiveRS, sendBroadcastTx)
+
+	if message.MessageCode != messages.CodePrivateMessage {
+		t.Fatalf("Not a private message : %d", message.MessageCode)
+	}
+
+	p, err := messages.Deserialize(message.MessageCode, message.MessagePayload)
+	if err != nil {
+		t.Fatalf("Failed to deserialize message payload : %s", err)
+	}
+
+	privateMessage, ok := p.(*messages.PrivateMessage)
+	if !ok {
+		t.Fatalf("Failed to convert accept : %s", err)
+	}
+
+	if privateMessage.Subject != "Sample encrypted message" {
+		t.Fatalf("Wrong private message subject : got \"%s\", want \"%s\"", privateMessage.Subject,
+			"Sample encrypted message")
+	}
+}
+
+func TestMessageIndirect(t *testing.T) {
+	ctx := tests.Context()
+	cfg := tests.NewMockConfig()
+
+	sendWallet, err := tests.NewMockWallet(ctx, cfg)
+	if err != nil {
+		t.Fatalf("Failed to create mock wallet : %s", err)
+	}
+
+	sendBroadcastTx := tests.NewMockBroadcaster(cfg)
+
+	sendRS, err := NewRelationships(cfg, sendWallet, sendBroadcastTx)
+	if err != nil {
+		t.Fatalf("Failed to create relationships : %s", err)
+	}
+
+	receiveWallet, err := tests.NewMockWallet(ctx, cfg)
+	if err != nil {
+		t.Fatalf("Failed to create mock wallet : %s", err)
+	}
+
+	receiveBroadcastTx := tests.NewMockBroadcaster(cfg)
+
+	receiveRS, err := NewRelationships(cfg, receiveWallet, receiveBroadcastTx)
+	if err != nil {
+		t.Fatalf("Failed to create relationships : %s", err)
+	}
+
+	otherKey, err := bitcoin.GenerateKey(bitcoin.MainNet)
+	if err != nil {
+		t.Fatalf("Failed to generate other key : %s", err)
+	}
+
+	otherPublicKey := otherKey.PublicKey()
+
+	createRelationship(t, ctx, cfg, sendWallet, sendRS, sendBroadcastTx, receiveWallet, receiveRS,
+		receiveBroadcastTx, &otherPublicKey)
+
+	logger.Info(ctx, "Sending private message ****************************************************")
 
 	sendPrivateMessage := messages.PrivateMessage{
 		Subject: "Sample encrypted message",

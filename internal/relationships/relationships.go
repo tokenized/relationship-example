@@ -74,6 +74,8 @@ func (rs *Relationships) DecryptAction(ctx context.Context, itx *inspector.Trans
 		return rs.wallet.DecryptActionDirect(ctx, itx.MsgTx, index)
 	}
 
+	logger.Info(ctx, "Relationship uses indirect encryption : %x", flag)
+
 	// Find appropriate encryption key based on sender public key.
 	// The encryption key is based on which key is used to create the message.
 	// For example if the sender used their 5th derived key to send the message, then the encryption
