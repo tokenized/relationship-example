@@ -13,11 +13,11 @@ import (
 type EnvironmentConfig struct {
 	Key         string `envconfig:"XKEY" json:"XKEY"`
 	Entity      string `envconfig:"ENTITY" json:"ENTITY"`
-	CommandPort uint16 `default:"12483" envconfig:"PORT" json:"PORT"`
+	CommandPath string `default:"./tmp/command" envconfig:"COMMAND_PATH" json:"COMMAND_PATH"`
 	Bitcoin     struct {
 		Network    string  `default:"mainnet" envconfig:"BITCOIN_CHAIN" json:"BITCOIN_CHAIN"`
 		IsTest     bool    `default:"true" envconfig:"IS_TEST" json:"IS_TEST"`
-		DustLimit  uint64  `default:"546" envconfig:"DUST_LIMIT" json:"DUST_LIMIT"`
+		DustLimit  uint64  `default:"576" envconfig:"DUST_LIMIT" json:"DUST_LIMIT"` // 576 for P2PK
 		FeeRate    float32 `default:"1.0" envconfig:"FEE_RATE" json:"FEE_RATE"`
 		AddressGap int     `default:"5" envconfig:"ADDRESS_GAP" json:"ADDRESS_GAP"`
 		WalletPath string  `default:"m/7400'/0'/0'/0" envconfig:"WALLET_PATH" json:"WALLET_PATH"`
@@ -51,8 +51,8 @@ type EnvironmentConfig struct {
 		Root   string `default:"./tmp" envconfig:"NODE_STORAGE_ROOT"`
 	}
 	Storage struct {
-		Bucket string `default:"standalone" envconfig:"CONTRACT_STORAGE_BUCKET"`
-		Root   string `default:"./tmp" envconfig:"CONTRACT_STORAGE_ROOT"`
+		Bucket string `default:"standalone" envconfig:"STORAGE_BUCKET"`
+		Root   string `default:"./tmp" envconfig:"STORAGE_ROOT"`
 	}
 	Identity struct {
 		URL string `envconfig:"IDENTITY_URL" json:"IDENTITY_URL"`
@@ -101,7 +101,7 @@ type Config struct {
 	AddressGap int
 	WalletPath string
 
-	CommandPort uint16
+	CommandPath string
 }
 
 func (c EnvironmentConfig) Config() (*Config, error) {
@@ -111,7 +111,7 @@ func (c EnvironmentConfig) Config() (*Config, error) {
 		FeeRate:     c.Bitcoin.FeeRate,
 		AddressGap:  c.Bitcoin.AddressGap,
 		WalletPath:  c.Bitcoin.WalletPath,
-		CommandPort: c.CommandPort,
+		CommandPath: c.CommandPath,
 	}
 
 	if len(c.Entity) > 0 {

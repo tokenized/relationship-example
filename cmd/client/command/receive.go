@@ -54,8 +54,8 @@ var commandReceive = &cobra.Command{
 			logger.Fatal(ctx, "Failed to send command : %s", err)
 		}
 
-		if isError(response) {
-			logger.Fatal(ctx, "Error Response : %s", string(response))
+		if t, m := isError(response); t {
+			logger.Fatal(ctx, "Error Response : %s", m)
 		}
 
 		ra, err := bitcoin.DecodeRawAddress(response)

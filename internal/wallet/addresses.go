@@ -63,7 +63,7 @@ func (w *Wallet) GetAddress(ctx context.Context, t, i uint32) *Address {
 func (w *Wallet) FindAddress(ctx context.Context, ra bitcoin.RawAddress) (*Address, error) {
 	hashes, err := ra.Hashes()
 	if err != nil {
-		return nil, errors.Wrap(err, "address hash")
+		return nil, errors.Wrap(err, "address hashes")
 	}
 
 	w.addressLock.Lock()

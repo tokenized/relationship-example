@@ -68,6 +68,14 @@ func (w *Wallet) AddIndependentKey(ctx context.Context, pk bitcoin.PublicKey,
 	logger.Info(ctx, "Adding independent key for address : %s",
 		bitcoin.NewAddressFromRawAddress(ra, w.cfg.Net).String())
 
+	pkra, err := bitcoin.NewRawAddressPublicKey(pk)
+	if err != nil {
+		return errors.Wrap(err, "raw address")
+	}
+
+	logger.Info(ctx, "Adding independent key for pk address : %s",
+		bitcoin.NewAddressFromRawAddress(pkra, w.cfg.Net).String())
+
 	hashes, err := ra.Hashes()
 	if err != nil {
 		return errors.Wrap(err, "new address hashes")

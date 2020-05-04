@@ -19,21 +19,28 @@ import (
 const (
 	CommandReceive  = "rec"
 	CommandInitiate = "ini"
+	CommandAccept   = "acc"
 )
 
 func (n *Node) RunCommandServer(ctx context.Context) error {
 
-	var err error
-	n.netLock.Lock()
-	n.netListener, err = net.Listen("tcp", fmt.Sprintf(":%d", n.cfg.CommandPort))
-	n.netLock.Unlock()
+	address, err := net.ResolveUnixAddr("unix", n.cfg.CommandPath)
+	if err != nil {
+		return errors.Wrap(err, "resolve address")
+	}
+
+	l, err := net.ListenUnix("unix", address)
 	if err != nil {
 		return errors.Wrap(err, "start listening")
 	}
 
-	logger.Info(ctx, "Listening for commands on port : %d", n.cfg.CommandPort)
+	n.netLock.Lock()
+	n.netListener = net.Listener(l)
+	n.netLock.Unlock()
+
+	logger.Info(ctx, "Listening for commands at path : %s", n.cfg.CommandPath)
 	for {
-		conn, err := n.netListener.Accept()
+		conn, err := l.AcceptUnix()
 		if err != nil {
 			return errors.Wrap(err, "net accept")
 		}
@@ -125,19 +132,42 @@ func (n *Node) ProcessCommand(ctx context.Context, command []byte) ([]byte, erro
 		}
 
 		// TODO Add support for more receivers and proof of identity --ce
-		initiate, err := n.rs.InitiateRelationship(ctx, []bitcoin.PublicKey{publicKey}, nil)
+		txid, _, err := n.rs.InitiateRelationship(ctx, []bitcoin.PublicKey{publicKey}, nil)
 		if err != nil {
 			return nil, errors.Wrap(err, "initiate relationship")
 		}
 
-		return initiate.Seed, nil
+		return txid.Bytes(), nil
+
+	case CommandAccept:
+		var txid bitcoin.Hash32
+		if err := txid.Deserialize(buf); err != nil {
+			return nil, errors.Wrap(err, "deserialize txid")
+		}
+
+		r := n.rs.FindRelationshipForTxId(ctx, txid)
+		if r == nil {
+			return nil, errors.New("Relationship not found")
+		}
+
+		_, err := n.rs.AcceptRelationship(ctx, r, nil)
+		if err != nil {
+			return nil, errors.Wrap(err, "accept relationship")
+		}
+
+		return []byte("Success"), nil
 	}
 
 	return nil, fmt.Errorf("Unknown command name : %s", string(name))
 }
 
 func SendCommand(ctx context.Context, cfg *config.Config, command []byte) ([]byte, error) {
-	conn, err := net.Dial("tcp", fmt.Sprintf(":%d", cfg.CommandPort))
+	address, err := net.ResolveUnixAddr("unix", cfg.CommandPath)
+	if err != nil {
+		return nil, errors.Wrap(err, "resolve address")
+	}
+
+	conn, err := net.DialUnix("unix", nil, address)
 	if err != nil {
 		return nil, errors.Wrap(err, "dial")
 	}

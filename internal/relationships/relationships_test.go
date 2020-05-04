@@ -38,7 +38,7 @@ func TestInitiate(t *testing.T) {
 
 	poi := &messages.IdentityOracleProofField{}
 
-	originalIR, err := rs.InitiateRelationship(ctx, []bitcoin.PublicKey{receiver.PublicKey()}, poi)
+	_, originalIR, err := rs.InitiateRelationship(ctx, []bitcoin.PublicKey{receiver.PublicKey()}, poi)
 	if err != nil {
 		t.Fatalf("Failed to create initiate relationship : %s", err)
 	}
@@ -129,7 +129,7 @@ func TestInitiateMulti(t *testing.T) {
 
 	poi := &messages.IdentityOracleProofField{}
 
-	originalIR, err := rs.InitiateRelationship(ctx, []bitcoin.PublicKey{
+	_, originalIR, err := rs.InitiateRelationship(ctx, []bitcoin.PublicKey{
 		receiver1.PublicKey(),
 		receiver2.PublicKey(),
 	}, poi)
@@ -235,7 +235,7 @@ func TestAcceptDirect(t *testing.T) {
 
 	poi := &messages.IdentityOracleProofField{}
 
-	originalIR, err := sendRS.InitiateRelationship(ctx, []bitcoin.PublicKey{receiver.PublicKey}, poi)
+	_, originalIR, err := sendRS.InitiateRelationship(ctx, []bitcoin.PublicKey{receiver.PublicKey}, poi)
 	if err != nil {
 		t.Fatalf("Failed to create initiate relationship : %s", err)
 	}
@@ -426,7 +426,7 @@ func TestAcceptIndirect(t *testing.T) {
 
 	poi := &messages.IdentityOracleProofField{}
 
-	originalIR, err := sendRS.InitiateRelationship(ctx, []bitcoin.PublicKey{
+	_, originalIR, err := sendRS.InitiateRelationship(ctx, []bitcoin.PublicKey{
 		receiver1.PublicKey,
 		receiver2.PublicKey,
 	}, poi)

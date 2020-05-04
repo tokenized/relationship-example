@@ -3,6 +3,7 @@ package relationships
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/tokenized/relationship-example/internal/platform/config"
@@ -20,6 +21,7 @@ import (
 
 var (
 	ErrUnknownFlag = errors.New("Unknown Flag")
+	ErrNotFound    = errors.New("Not found")
 )
 
 const (
@@ -46,10 +48,43 @@ func NewRelationships(cfg *config.Config, wallet *wallet.Wallet, broadcastTx wal
 	return result, nil
 }
 
-func (rs *Relationships) FindRelationship(ctx context.Context, flag []byte) *Relationship {
+func (rs *Relationships) GetRelationship(ctx context.Context, keyType, keyIndex uint32) *Relationship {
 	rs.lock.Lock()
 	defer rs.lock.Unlock()
 
+	for _, r := range rs.Relationships {
+		if r.KeyType == keyType && r.KeyIndex == keyIndex {
+			return r
+		}
+	}
+
+	return nil
+}
+
+func (rs *Relationships) FindRelationshipForFlag(ctx context.Context, flag []byte) *Relationship {
+	rs.lock.Lock()
+	defer rs.lock.Unlock()
+
+	return rs.findRelationshipForFlag(ctx, flag)
+}
+
+func (rs *Relationships) FindRelationshipForTxId(ctx context.Context, txid bitcoin.Hash32) *Relationship {
+	rs.lock.Lock()
+	defer rs.lock.Unlock()
+
+	logger.Info(ctx, "Searching for relationship : %s", txid.String())
+
+	for _, r := range rs.Relationships {
+		logger.Info(ctx, "Checking relationship : %s", r.TxId.String())
+		if r.TxId.Equal(&txid) {
+			return r
+		}
+	}
+
+	return nil
+}
+
+func (rs *Relationships) findRelationshipForFlag(ctx context.Context, flag []byte) *Relationship {
 	for _, r := range rs.Relationships {
 		if bytes.Equal(r.Flag, flag) {
 			return r
@@ -57,6 +92,168 @@ func (rs *Relationships) FindRelationship(ctx context.Context, flag []byte) *Rel
 	}
 
 	return nil
+}
+
+// GetRelationshipForTx finds the relationship based on the senders and receivers of the
+//   transaction and also increments all of the hashes for the keys involved.
+// Returns:
+//   *Relationship - matching relationship. nil if not found
+//   bool - true if we are the sender
+//   uint32 - the index of the member that sent the tx
+//   error - if applicable
+func (rs *Relationships) GetRelationshipForTx(ctx context.Context, itx *inspector.Transaction,
+	message *actions.Message, flag []byte) (*Relationship, bool, uint32, error) {
+
+	var r *Relationship
+	if len(flag) > 0 {
+		r = rs.FindRelationshipForFlag(ctx, flag)
+	}
+
+	if len(message.SenderIndexes) == 0 { // No sender indexes means use the first input
+		message.SenderIndexes = append(message.SenderIndexes, 0)
+	}
+
+	areSender := false
+	memberIndex := uint32(0)
+	for _, senderIndex := range message.SenderIndexes {
+		if int(senderIndex) >= len(itx.MsgTx.TxIn) {
+			return nil, false, 0, fmt.Errorf("Sender index out of range : %d/%d", senderIndex,
+				len(itx.MsgTx.TxIn))
+		}
+
+		pk, err := bitcoin.PublicKeyFromUnlockingScript(itx.MsgTx.TxIn[senderIndex].SignatureScript)
+		if err != nil {
+			return nil, false, 0, errors.Wrap(err, "sender parse script")
+		}
+
+		publicKey, err := bitcoin.PublicKeyFromBytes(pk)
+		if err != nil {
+			return nil, false, 0, errors.Wrap(err, "sender public key")
+		}
+
+		ra, err := publicKey.RawAddress()
+		if err != nil {
+			return nil, false, 0, errors.Wrap(err, "sender address")
+		}
+
+		ad, err := rs.wallet.FindAddress(ctx, ra)
+		if err != nil {
+			if errors.Cause(err) == bitcoin.ErrUnknownScriptTemplate {
+				continue
+			}
+			return nil, false, 0, errors.Wrap(err, "find sender address")
+		}
+
+		if ad != nil &&
+			(ad.KeyType == wallet.KeyTypeRelateIn || ad.KeyType == wallet.KeyTypeRelateOut) {
+
+			if r != nil {
+				if ad.KeyType != r.KeyType || ad.KeyIndex != r.KeyIndex {
+					return nil, false, 0, errors.New("Wrong key for relationship")
+				}
+			} else {
+				r = rs.GetRelationship(ctx, ad.KeyType, ad.KeyIndex)
+				if r == nil {
+					return nil, false, 0, ErrNotFound
+				}
+			}
+
+			areSender = true
+
+			if ad.PublicKey.Equal(r.NextKey) {
+				if err := r.IncrementHash(ctx, rs.wallet); err != nil {
+					return nil, false, 0, errors.Wrap(err, "increment hash")
+				}
+			}
+		}
+	}
+
+	if len(message.ReceiverIndexes) == 0 { // No receiver indexes means use the first input
+		message.ReceiverIndexes = append(message.ReceiverIndexes, 0)
+	}
+
+	if !areSender {
+		for _, receiverIndex := range message.ReceiverIndexes {
+			if int(receiverIndex) >= len(itx.Outputs) {
+				return nil, false, 0, fmt.Errorf("Receiver index out of range : %d/%d", receiverIndex,
+					len(itx.Outputs))
+			}
+
+			ad, err := rs.wallet.FindAddress(ctx, itx.Outputs[receiverIndex].Address)
+			if err != nil {
+				if errors.Cause(err) == bitcoin.ErrUnknownScriptTemplate {
+					continue
+				}
+				return nil, false, 0, errors.Wrap(err, "find receiver address")
+			}
+
+			if ad != nil &&
+				(ad.KeyType == wallet.KeyTypeRelateIn || ad.KeyType == wallet.KeyTypeRelateOut) {
+
+				if r != nil {
+					if ad.KeyType != r.KeyType || ad.KeyIndex != r.KeyIndex {
+						return nil, false, 0, errors.New("Wrong key for relationship")
+					}
+				} else {
+					r = rs.GetRelationship(ctx, ad.KeyType, ad.KeyIndex)
+					if r == nil {
+						return nil, false, 0, ErrNotFound
+					}
+
+					if ad.PublicKey.Equal(r.NextKey) {
+						if err := r.IncrementHash(ctx, rs.wallet); err != nil {
+							return nil, false, 0, errors.Wrap(err, "increment hash")
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if r == nil {
+		return nil, false, 0, ErrNotFound
+	}
+
+	for _, senderIndex := range message.SenderIndexes {
+		pk, err := bitcoin.PublicKeyFromUnlockingScript(itx.MsgTx.TxIn[senderIndex].SignatureScript)
+		if err != nil {
+			return nil, false, 0, errors.Wrap(err, "sender parse script")
+		}
+
+		publicKey, err := bitcoin.PublicKeyFromBytes(pk)
+		if err != nil {
+			return nil, false, 0, errors.Wrap(err, "sender public key")
+		}
+
+		for index, m := range r.Members {
+			if publicKey.Equal(m.NextKey) {
+				if !areSender {
+					memberIndex = uint32(index)
+				}
+				m.IncrementHash()
+				break
+			}
+		}
+	}
+
+	for _, receiverIndex := range message.ReceiverIndexes {
+		publicKey, err := itx.Outputs[receiverIndex].Address.GetPublicKey()
+		if err != nil {
+			if errors.Cause(err) == bitcoin.ErrWrongType {
+				continue
+			}
+			return nil, false, 0, errors.Wrap(err, "get public key")
+		}
+
+		for _, m := range r.Members {
+			if publicKey.Equal(m.NextKey) {
+				m.IncrementHash()
+				break
+			}
+		}
+	}
+
+	return r, areSender, memberIndex, nil
 }
 
 func (rs *Relationships) DecryptAction(ctx context.Context, itx *inspector.Transaction, index int,
@@ -69,7 +266,7 @@ func (rs *Relationships) DecryptAction(ctx context.Context, itx *inspector.Trans
 	}
 
 	// Find relationship
-	r := rs.FindRelationship(ctx, flag)
+	r := rs.findRelationshipForFlag(ctx, flag)
 	if r == nil { // Not related to a relationship with a indirect encryption
 		return rs.wallet.DecryptActionDirect(ctx, itx.MsgTx, index)
 	}

@@ -81,7 +81,7 @@ func createRelationship(t *testing.T, ctx context.Context, cfg *config.Config,
 
 	poi := &messages.IdentityOracleProofField{}
 
-	_, err = sendRS.InitiateRelationship(ctx, receivers, poi)
+	_, _, err = sendRS.InitiateRelationship(ctx, receivers, poi)
 	if err != nil {
 		t.Fatalf("Failed to initiate relationship : %s", err)
 	}

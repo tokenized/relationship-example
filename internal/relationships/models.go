@@ -72,10 +72,6 @@ func (m *Member) Deserialize(buf *bytes.Reader) error {
 		return errors.Wrap(err, "next hash")
 	}
 
-	if _, err := buf.Read(m.NextHash[:]); err != nil {
-		return errors.Wrap(err, "next hash")
-	}
-
 	if err := binary.Read(buf, binary.LittleEndian, &m.NextIndex); err != nil {
 		return errors.Wrap(err, "next index")
 	}

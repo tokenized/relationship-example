@@ -97,7 +97,7 @@ func (n *Node) HandleTx(ctx context.Context, tx *wire.MsgTx) (bool, error) {
 		// Check for flags for known relationships.
 		flag, err := protocol.DeserializeFlagOutputScript(output.PkScript)
 		if err == nil {
-			r := n.rs.FindRelationship(ctx, flag)
+			r := n.rs.FindRelationshipForFlag(ctx, flag)
 			if r != nil {
 				logger.Info(ctx, "Found tx output %d for flag %x : %s", index, flag,
 					tx.TxHash().String())

@@ -161,11 +161,6 @@ func (rs *Relationships) AcceptRelationship(ctx context.Context, r *Relationship
 		return nil, errors.Wrap(err, "add message op return")
 	}
 
-	if err := rs.wallet.AddIndependentKey(ctx, nextKey.PublicKey(), r.KeyType, r.KeyIndex,
-		r.NextHash); err != nil {
-		return nil, errors.Wrap(err, "add independent key")
-	}
-
 	logger.Info(ctx, "Adding key funding")
 	if err := rs.wallet.AddKeyFunding(ctx, r.KeyType, r.KeyIndex, r.NextHash, tx, rs.broadcastTx); err != nil {
 		return nil, errors.Wrap(err, "add key funding")
@@ -190,72 +185,29 @@ func (rs *Relationships) AcceptRelationship(ctx context.Context, r *Relationship
 func (rs *Relationships) ProcessAcceptRelationship(ctx context.Context, itx *inspector.Transaction,
 	message *actions.Message, accept *messages.AcceptRelationship, flag []byte) error {
 
-	// Find relationship
-	r := rs.FindRelationship(ctx, flag)
+	// Get relationship
+	r, areSender, memberIndex, err := rs.GetRelationshipForTx(ctx, itx, message, flag)
+	if err != nil {
+		return errors.Wrap(err, "get relationship")
+	}
 	if r == nil {
-		return ErrUnknownFlag
+		return ErrNotFound
 	}
 
 	if len(message.SenderIndexes) > 1 {
-		return fmt.Errorf("More than one sender not supported : %d",
-			len(message.SenderIndexes))
+		return fmt.Errorf("More than one sender not supported : %d", len(message.SenderIndexes))
 	}
 
-	if len(message.SenderIndexes) == 0 { // No sender indexes means use the first input
-		message.SenderIndexes = append(message.SenderIndexes, 0)
-	}
-
-	for _, senderIndex := range message.SenderIndexes {
-		if int(senderIndex) >= len(itx.MsgTx.TxIn) {
-			return fmt.Errorf("Sender index out of range : %d/%d", senderIndex,
-				len(itx.MsgTx.TxIn))
+	if areSender {
+		logger.Info(ctx, "Accepted relationship : %s", r.TxId.String())
+		r.Accepted = true
+	} else {
+		ra, err := r.Members[memberIndex].BaseKey.RawAddress()
+		if err == nil {
+			logger.Info(ctx, "Relationship accepted by %s : %s", r.TxId.String(),
+				bitcoin.NewAddressFromRawAddress(ra, rs.cfg.Net).String())
 		}
-
-		pk, err := bitcoin.PublicKeyFromUnlockingScript(itx.MsgTx.TxIn[senderIndex].SignatureScript)
-		if err != nil {
-			return errors.Wrap(err, "sender parse script")
-		}
-
-		publicKey, err := bitcoin.PublicKeyFromBytes(pk)
-		if err != nil {
-			return errors.Wrap(err, "sender public key")
-		}
-
-		ra, err := publicKey.RawAddress()
-		if err != nil {
-			return errors.Wrap(err, "sender address")
-		}
-
-		ad, err := rs.wallet.FindAddress(ctx, ra)
-		if err != nil {
-			return errors.Wrap(err, "sender address")
-		}
-
-		if ad != nil {
-			// We are sender. Mark relationship as accepted
-			r.Accepted = true
-
-			nextKey, err := bitcoin.NextPublicKey(publicKey, r.NextHash)
-			if err != nil {
-				return errors.Wrap(err, "next key")
-			}
-
-			if err := rs.wallet.AddIndependentKey(ctx, nextKey, r.KeyType, r.KeyIndex,
-				r.NextHash); err != nil {
-				return errors.Wrap(err, "add independent key")
-			}
-
-			continue
-		}
-
-		// Find which member to mark relationship accepted.
-		for _, member := range r.Members {
-			if member.NextKey.Equal(publicKey) {
-				member.Accepted = true
-				member.IncrementHash()
-				break
-			}
-		}
+		r.Members[memberIndex].Accepted = true
 	}
 
 	return nil

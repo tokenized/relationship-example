@@ -26,6 +26,7 @@ var clientCommand = &cobra.Command{
 func Execute() {
 	clientCommand.AddCommand(commandReceive)
 	clientCommand.AddCommand(commandInitiate)
+	clientCommand.AddCommand(commandAccept)
 	clientCommand.Execute()
 }
 
@@ -82,6 +83,9 @@ func dumpJSON(o interface{}) error {
 	return nil
 }
 
-func isError(response []byte) bool {
-	return len(response) >= 5 && bytes.Equal(response[:5], []byte("err: "))
+func isError(response []byte) (bool, string) {
+	if len(response) >= 5 && bytes.Equal(response[:5], []byte("err: ")) {
+		return true, string(response[5:])
+	}
+	return false, ""
 }

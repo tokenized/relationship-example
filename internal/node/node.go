@@ -1,6 +1,7 @@
 package node
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"sync"
@@ -202,6 +203,11 @@ func (n *Node) ProcessTx(ctx context.Context, tx *wire.MsgTx) error {
 func (n *Node) BroadcastTx(ctx context.Context, tx *wire.MsgTx) error {
 	logger.Info(ctx, "Broadcasting Tx : \n%s\n", tx.StringWithAddresses(n.cfg.Net))
 
+	var txBuf bytes.Buffer
+	if err := tx.Serialize(&txBuf); err == nil {
+		logger.Info(ctx, "Raw Tx : \n%x\n", txBuf.Bytes())
+	}
+
 	if err := n.spy.BroadcastTx(ctx, tx); err != nil {
 		return errors.Wrap(err, "broadcast tx")
 	}
@@ -210,7 +216,7 @@ func (n *Node) BroadcastTx(ctx context.Context, tx *wire.MsgTx) error {
 		return errors.Wrap(err, "handle tx")
 	}
 
-	if err := n.rpc.SaveTX(tx); err != nil {
+	if err := n.rpc.SaveTX(ctx, tx); err != nil {
 		return errors.Wrap(err, "save rpc tx")
 	}
 
