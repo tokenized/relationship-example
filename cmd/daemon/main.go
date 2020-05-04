@@ -65,8 +65,10 @@ func main() {
 	if len(logPath) > 0 {
 		spynodeConfig := logger.NewDevelopmentSystemConfig()
 		spynodeConfig.SetFile(logPath)
-		spynodeConfig.MinLevel = logger.LevelDebug
+		spynodeConfig.MinLevel = logger.LevelVerbose
 		logConfig.SubSystems[spynode.SubSystem] = spynodeConfig
+	} else {
+		logConfig.EnableSubSystem(spynode.SubSystem)
 	}
 
 	ctx := logger.ContextWithLogConfig(context.Background(), logConfig)

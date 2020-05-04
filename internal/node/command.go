@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
 
 	"github.com/tokenized/relationship-example/internal/platform/config"
 
@@ -29,19 +30,29 @@ func (n *Node) RunCommandServer(ctx context.Context) error {
 		return errors.Wrap(err, "resolve address")
 	}
 
-	l, err := net.ListenUnix("unix", address)
+	listener, err := net.ListenUnix("unix", address)
 	if err != nil {
 		return errors.Wrap(err, "start listening")
 	}
 
 	n.netLock.Lock()
-	n.netListener = net.Listener(l)
+	n.netListener = net.Listener(listener)
 	n.netLock.Unlock()
 
 	logger.Info(ctx, "Listening for commands at path : %s", n.cfg.CommandPath)
 	for {
-		conn, err := l.AcceptUnix()
+		listener.SetDeadline(time.Now().Add(1e9))
+		conn, err := listener.AcceptUnix()
 		if err != nil {
+			if opErr, isOpErr := err.(*net.OpError); isOpErr && opErr.Timeout() {
+				// Check for stop request
+				val := n.stop.Load()
+				s, ok := val.(bool)
+				if !ok || s {
+					break
+				}
+				continue
+			}
 			return errors.Wrap(err, "net accept")
 		}
 

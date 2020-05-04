@@ -95,6 +95,8 @@ func (n *Node) Run(ctx context.Context) error {
 }
 
 func (n *Node) Stop(ctx context.Context) error {
+	n.stop.Store(true)
+
 	n.netLock.Lock()
 	n.netListener.Close()
 	for _, conn := range n.netConns {
@@ -102,7 +104,6 @@ func (n *Node) Stop(ctx context.Context) error {
 	}
 	n.netLock.Unlock()
 
-	n.stop.Store(true)
 	return nil
 }
 
