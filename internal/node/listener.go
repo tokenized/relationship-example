@@ -7,6 +7,7 @@ import (
 	"github.com/tokenized/smart-contract/pkg/logger"
 	"github.com/tokenized/smart-contract/pkg/spynode/handlers"
 	"github.com/tokenized/smart-contract/pkg/wire"
+
 	"github.com/tokenized/specification/dist/golang/protocol"
 )
 
@@ -52,9 +53,10 @@ func (n *Node) HandleTx(ctx context.Context, tx *wire.MsgTx) (bool, error) {
 			address := bitcoin.NewAddressFromRawAddress(ra, n.cfg.Net)
 			logger.Info(ctx, "Found tx input %d for %s : %s", index, address.String(),
 				tx.TxHash().String())
-			n.SetTx(tx)
 			if err := n.PreprocessTx(ctx, tx); err != nil {
 				logger.Error(ctx, "Failed preprocess : %s : %s", err, tx.TxHash().String())
+			} else {
+				n.SetTx(tx)
 			}
 			return true, nil
 		}
@@ -67,9 +69,10 @@ func (n *Node) HandleTx(ctx context.Context, tx *wire.MsgTx) (bool, error) {
 		if utxo != nil {
 			logger.Info(ctx, "Found tx input %d for utxo %s %d : %s", index,
 				utxo.UTXO.Hash.String(), utxo.UTXO.Index, tx.TxHash().String())
-			n.SetTx(tx)
 			if err := n.PreprocessTx(ctx, tx); err != nil {
 				logger.Error(ctx, "Failed preprocess : %s : %s", err, tx.TxHash().String())
+			} else {
+				n.SetTx(tx)
 			}
 			return true, nil
 		}
@@ -87,9 +90,10 @@ func (n *Node) HandleTx(ctx context.Context, tx *wire.MsgTx) (bool, error) {
 			address := bitcoin.NewAddressFromRawAddress(ra, n.cfg.Net)
 			logger.Info(ctx, "Found tx output %d for %s : %s", index, address.String(),
 				tx.TxHash().String())
-			n.SetTx(tx)
 			if err := n.PreprocessTx(ctx, tx); err != nil {
 				logger.Error(ctx, "Failed preprocess : %s : %s", err, tx.TxHash().String())
+			} else {
+				n.SetTx(tx)
 			}
 			return true, nil
 		}
@@ -101,9 +105,10 @@ func (n *Node) HandleTx(ctx context.Context, tx *wire.MsgTx) (bool, error) {
 			if r != nil {
 				logger.Info(ctx, "Found tx output %d for flag %x : %s", index, flag,
 					tx.TxHash().String())
-				n.SetTx(tx)
 				if err := n.PreprocessTx(ctx, tx); err != nil {
 					logger.Error(ctx, "Failed preprocess : %s : %s", err, tx.TxHash().String())
+				} else {
+					n.SetTx(tx)
 				}
 				return true, nil
 			}
@@ -119,8 +124,18 @@ func (n *Node) HandleTxState(ctx context.Context, msgType int, txid bitcoin.Hash
 
 	switch msgType {
 	case handlers.ListenerMsgTxStateSafe:
-		fallthrough
+		logger.Info(ctx, "Tx Safe : %s", txid.String())
+		tx := n.GetTx(txid)
+		if tx != nil {
+			n.RemoveTx(txid)
+			if err := n.ProcessTx(ctx, tx); err != nil {
+				logger.Error(ctx, "Failed to process tx : %s", err)
+				// TODO Stop the daemon
+			}
+		}
+
 	case handlers.ListenerMsgTxStateConfirm:
+		logger.Info(ctx, "Tx Confirmed : %s", txid.String())
 		tx := n.GetTx(txid)
 		if tx != nil {
 			n.RemoveTx(txid)
@@ -131,13 +146,38 @@ func (n *Node) HandleTxState(ctx context.Context, msgType int, txid bitcoin.Hash
 		}
 
 	case handlers.ListenerMsgTxStateCancel:
-		fallthrough
-	case handlers.ListenerMsgTxStateUnsafe:
 		logger.Info(ctx, "Canceling tx : %s", txid.String())
-		n.RemoveTx(txid)
+		tx := n.GetTx(txid)
+		if tx != nil {
+			n.RemoveTx(txid)
+			if err := n.RevertTx(ctx, tx); err != nil {
+				logger.Error(ctx, "Failed to revert tx : %s", err)
+				// TODO Stop the daemon
+			}
+		}
+
+	case handlers.ListenerMsgTxStateUnsafe:
+		logger.Info(ctx, "Tx Unsafe : %s", txid.String())
+		tx := n.GetTx(txid)
+		if tx != nil {
+			n.RemoveTx(txid)
+			if err := n.RevertTx(ctx, tx); err != nil {
+				logger.Error(ctx, "Failed to revert tx : %s", err)
+				// TODO Stop the daemon
+			}
+		}
+
 	case handlers.ListenerMsgTxStateRevert:
-		logger.Info(ctx, "Reverted tx : %s", txid.String())
-		// TODO Revert
+		logger.Info(ctx, "Reverting tx : %s", txid.String())
+		tx := n.GetTx(txid)
+		if tx != nil {
+			n.RemoveTx(txid)
+			if err := n.RevertTx(ctx, tx); err != nil {
+				logger.Error(ctx, "Failed to revert tx : %s", err)
+				// TODO Stop the daemon
+			}
+		}
+
 	}
 
 	return nil

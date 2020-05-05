@@ -36,8 +36,8 @@ func (w *Wallet) GetKeyUTXOs(ctx context.Context, keyType, keyIndex uint32) ([]*
 	result := make([]*UTXO, 0)
 	for _, utxos := range w.utxos {
 		for _, utxo := range utxos {
-			if !utxo.Reserved && utxo.KeyHash == nil && utxo.KeyType == keyType &&
-				utxo.KeyIndex == keyIndex {
+			if !utxo.Reserved && !utxo.Deleted && !utxo.Pending && utxo.KeyHash == nil &&
+				utxo.KeyType == keyType && utxo.KeyIndex == keyIndex {
 				result = append(result, utxo)
 			}
 		}
@@ -46,15 +46,16 @@ func (w *Wallet) GetKeyUTXOs(ctx context.Context, keyType, keyIndex uint32) ([]*
 	return result, nil
 }
 
-func (w *Wallet) GetKeyHashUTXOs(ctx context.Context, keyType, keyIndex uint32, keyHash bitcoin.Hash32) ([]*UTXO, error) {
+func (w *Wallet) GetKeyHashUTXOs(ctx context.Context, keyType, keyIndex uint32,
+	keyHash bitcoin.Hash32) ([]*UTXO, error) {
 	w.utxoLock.Lock()
 	defer w.utxoLock.Unlock()
 
 	result := make([]*UTXO, 0)
 	for _, utxos := range w.utxos {
 		for _, utxo := range utxos {
-			if !utxo.Reserved && utxo.KeyHash != nil && keyHash.Equal(utxo.KeyHash) &&
-				utxo.KeyType == keyType && utxo.KeyIndex == keyIndex {
+			if !utxo.Reserved && !utxo.Deleted && !utxo.Pending && utxo.KeyHash != nil &&
+				keyHash.Equal(utxo.KeyHash) && utxo.KeyType == keyType && utxo.KeyIndex == keyIndex {
 				result = append(result, utxo)
 			}
 		}
@@ -73,7 +74,8 @@ func (w *Wallet) GetBitcoinUTXOs(ctx context.Context) ([]*UTXO, error) {
 	result := make([]*UTXO, 0)
 	for _, utxos := range w.utxos {
 		for _, utxo := range utxos {
-			if !utxo.Reserved && (utxo.KeyType == KeyTypeExternal || utxo.KeyType == KeyTypeInternal) {
+			if !utxo.Reserved && !utxo.Deleted && !utxo.Pending &&
+				(utxo.KeyType == KeyTypeExternal || utxo.KeyType == KeyTypeInternal) {
 				result = append(result, utxo)
 			}
 		}
@@ -132,6 +134,25 @@ func (w *Wallet) CreateUTXO(ctx context.Context, utxo *UTXO) error {
 	return nil
 }
 
+func (w *Wallet) FinalizeUTXO(ctx context.Context, hash bitcoin.Hash32, index uint32) (*UTXO, error) {
+	w.utxoLock.Lock()
+	defer w.utxoLock.Unlock()
+
+	utxos, exists := w.utxos[hash]
+	if !exists {
+		return nil, nil
+	}
+
+	for _, utxo := range utxos {
+		if utxo.UTXO.Index == index {
+			utxo.Pending = false
+			return utxo, nil
+		}
+	}
+
+	return nil, nil
+}
+
 func (w *Wallet) DeleteUTXO(ctx context.Context, hash bitcoin.Hash32, index uint32) (*UTXO, error) {
 	w.utxoLock.Lock()
 	defer w.utxoLock.Unlock()
@@ -141,9 +162,28 @@ func (w *Wallet) DeleteUTXO(ctx context.Context, hash bitcoin.Hash32, index uint
 		return nil, nil
 	}
 
-	for i, utxo := range utxos {
+	for _, utxo := range utxos {
 		if utxo.UTXO.Index == index {
-			w.utxos[hash] = append(utxos[:i], utxos[i+1:]...)
+			utxo.Deleted = true
+			return utxo, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func (w *Wallet) UndeleteUTXO(ctx context.Context, hash bitcoin.Hash32, index uint32) (*UTXO, error) {
+	w.utxoLock.Lock()
+	defer w.utxoLock.Unlock()
+
+	utxos, exists := w.utxos[hash]
+	if !exists {
+		return nil, nil
+	}
+
+	for _, utxo := range utxos {
+		if utxo.UTXO.Index == index {
+			utxo.Deleted = false
 			return utxo, nil
 		}
 	}
@@ -160,10 +200,28 @@ func (w *Wallet) ReserveUTXO(ctx context.Context, hash bitcoin.Hash32, index uin
 		return nil, nil
 	}
 
-	for i, utxo := range utxos {
+	for _, utxo := range utxos {
 		if utxo.UTXO.Index == index {
-			utxos[i].Reserved = true
-			w.utxos[hash] = utxos
+			utxo.Reserved = true
+			return utxo, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func (w *Wallet) UnreserveUTXO(ctx context.Context, hash bitcoin.Hash32, index uint32) (*UTXO, error) {
+	w.utxoLock.Lock()
+	defer w.utxoLock.Unlock()
+
+	utxos, exists := w.utxos[hash]
+	if !exists {
+		return nil, nil
+	}
+
+	for _, utxo := range utxos {
+		if utxo.UTXO.Index == index {
+			utxo.Reserved = false
 			return utxo, nil
 		}
 	}
@@ -246,6 +304,7 @@ func (w *Wallet) ProcessUTXOs(ctx context.Context, tx *wire.MsgTx, isFinal bool)
 				KeyType:  address.KeyType,
 				KeyIndex: address.KeyIndex,
 				KeyHash:  address.KeyHash,
+				Pending:  true,
 			}
 
 			if err := w.CreateUTXO(ctx, utxo); err != nil {
@@ -260,6 +319,121 @@ func (w *Wallet) ProcessUTXOs(ctx context.Context, tx *wire.MsgTx, isFinal bool)
 
 		if err := w.MarkAddress(ctx, address); err != nil {
 			return errors.Wrap(err, "mark address")
+		}
+	}
+
+	return nil
+}
+
+func (w *Wallet) FinalizeUTXOs(ctx context.Context, tx *wire.MsgTx) error {
+
+	// Add new UTXOs
+	for index, output := range tx.TxOut {
+		ra, err := bitcoin.RawAddressFromLockingScript(output.PkScript)
+		if err != nil {
+			continue
+		}
+
+		// Check if we own the address
+		address, err := w.FindAddress(ctx, ra)
+		if err != nil {
+			logger.Error(ctx, "Failed to find address : %s", err)
+		}
+		if address == nil {
+			continue
+		}
+
+		if output.Value > 0 {
+			utxo, err := w.FinalizeUTXO(ctx, *tx.TxHash(), uint32(index))
+			if err != nil {
+				return errors.Wrap(err, "finalize utxo")
+			}
+
+			logger.Info(ctx, "Finalized UTXO (%d) : [%s %d %s] %s %d", utxo.UTXO.Value,
+				KeyTypeName[address.KeyType], address.KeyIndex,
+				bitcoin.NewAddressFromRawAddress(ra, w.cfg.Net).String(), utxo.UTXO.Hash.String(),
+				utxo.UTXO.Index)
+		}
+	}
+
+	return nil
+}
+
+func (w *Wallet) RevertUTXOs(ctx context.Context, tx *wire.MsgTx, isFinal bool) error {
+
+	// Delete spent UTXOs
+	for _, input := range tx.TxIn {
+		if isFinal {
+			utxo, err := w.UndeleteUTXO(ctx, input.PreviousOutPoint.Hash,
+				input.PreviousOutPoint.Index)
+			if err != nil {
+				return errors.Wrap(err, "undelete utxo")
+			}
+
+			if utxo != nil {
+				address := w.GetAddress(ctx, utxo.KeyType, utxo.KeyIndex)
+				if address != nil {
+					logger.Info(ctx, "Undeleted UTXO (%d) : [%s %d %s] %s %d", utxo.UTXO.Value,
+						KeyTypeName[utxo.KeyType], utxo.KeyIndex,
+						bitcoin.NewAddressFromRawAddress(address.Address, w.cfg.Net).String(),
+						utxo.UTXO.Hash.String(), utxo.UTXO.Index)
+				} else {
+					logger.Info(ctx, "Undeleted UTXO (%d) : [%s %d %s] %s %d", utxo.UTXO.Value,
+						KeyTypeName[utxo.KeyType], utxo.KeyIndex, "unknown",
+						utxo.UTXO.Hash.String(), utxo.UTXO.Index)
+				}
+			}
+		} else {
+			utxo, err := w.UnreserveUTXO(ctx, input.PreviousOutPoint.Hash,
+				input.PreviousOutPoint.Index)
+			if err != nil {
+				return errors.Wrap(err, "unreserve utxo")
+			}
+
+			if utxo != nil {
+				address := w.GetAddress(ctx, utxo.KeyType, utxo.KeyIndex)
+				if address != nil {
+					logger.Info(ctx, "Unreserved UTXO (%d) : [%s %d %s] %s %d", utxo.UTXO.Value,
+						KeyTypeName[address.KeyType], address.KeyIndex,
+						bitcoin.NewAddressFromRawAddress(address.Address, w.cfg.Net).String(),
+						utxo.UTXO.Hash.String(), utxo.UTXO.Index)
+				} else {
+					logger.Info(ctx, "Unreserved UTXO (%d) : [%s %d %s] %s %d", utxo.UTXO.Value,
+						KeyTypeName[address.KeyType], address.KeyIndex, "unknown",
+						utxo.UTXO.Hash.String(), utxo.UTXO.Index)
+				}
+			}
+		}
+	}
+
+	// Add new UTXOs
+	for index, output := range tx.TxOut {
+		ra, err := bitcoin.RawAddressFromLockingScript(output.PkScript)
+		if err != nil {
+			continue
+		}
+
+		// Check if we own the address
+		address, err := w.FindAddress(ctx, ra)
+		if err != nil {
+			logger.Error(ctx, "Failed to find address : %s", err)
+		}
+		if address == nil {
+			continue
+		}
+
+		if output.Value > 0 {
+			utxo, err := w.DeleteUTXO(ctx, *tx.TxHash(), uint32(index))
+			if err != nil {
+				return errors.Wrap(err, "delete utxo")
+			}
+
+			if utxo != nil {
+				logger.Info(ctx, "Reverted UTXO (%d) : [%s %d %s] %s %d", utxo.UTXO.Value,
+					KeyTypeName[address.KeyType], address.KeyIndex,
+					bitcoin.NewAddressFromRawAddress(ra, w.cfg.Net).String(), utxo.UTXO.Hash.String(),
+					utxo.UTXO.Index)
+			}
 		}
 	}
 

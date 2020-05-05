@@ -82,15 +82,27 @@ func NewMockWallet(ctx context.Context, cfg *config.Config) (*wallet.Wallet, err
 	}
 
 	var rhash bitcoin.Hash32
+
 	rand.Read(rhash[:])
-
 	logger.Info(ctx, "Mock funding tx : %s", rhash.String())
-
 	err = result.CreateUTXO(ctx, &wallet.UTXO{
 		UTXO: bitcoin.UTXO{
 			Hash:          rhash,
 			Index:         1,
 			Value:         100000,
+			LockingScript: script,
+		},
+		KeyType:  ad.KeyType,
+		KeyIndex: ad.KeyIndex,
+	})
+
+	rand.Read(rhash[:])
+	logger.Info(ctx, "Mock funding tx : %s", rhash.String())
+	err = result.CreateUTXO(ctx, &wallet.UTXO{
+		UTXO: bitcoin.UTXO{
+			Hash:          rhash,
+			Index:         1,
+			Value:         101000,
 			LockingScript: script,
 		},
 		KeyType:  ad.KeyType,

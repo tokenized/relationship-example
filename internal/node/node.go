@@ -156,6 +156,10 @@ func (n *Node) ProcessTx(ctx context.Context, tx *wire.MsgTx) error {
 
 	logger.Info(ctx, "Processing tx : %s", tx.TxHash().String())
 
+	if err := n.wallet.FinalizeUTXOs(ctx, tx); err != nil {
+		return errors.Wrap(err, "finalize utxos")
+	}
+
 	itx, err := inspector.NewBaseTransactionFromWire(ctx, tx)
 	if err != nil {
 		return errors.Wrap(err, "new inspector tx")
@@ -196,6 +200,19 @@ func (n *Node) ProcessTx(ctx context.Context, tx *wire.MsgTx) error {
 				return errors.Wrap(err, "process message")
 			}
 		}
+	}
+
+	return nil
+}
+
+func (n *Node) RevertTx(ctx context.Context, tx *wire.MsgTx) error {
+	n.processLock.Lock()
+	defer n.processLock.Unlock()
+
+	logger.Info(ctx, "Reverting tx : %s", tx.TxHash().String())
+
+	if err := n.wallet.RevertUTXOs(ctx, tx, true); err != nil {
+		return errors.Wrap(err, "revert utxos")
 	}
 
 	return nil

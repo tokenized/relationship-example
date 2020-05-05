@@ -26,7 +26,9 @@ type UTXO struct {
 	KeyType  uint32
 	KeyIndex uint32
 	KeyHash  *bitcoin.Hash32
+	Pending  bool
 	Reserved bool
+	Deleted  bool
 }
 
 type Transaction struct {
@@ -179,8 +181,16 @@ func (u UTXO) Serialize(buf *bytes.Buffer) error {
 		}
 	}
 
+	if err := binary.Write(buf, binary.LittleEndian, u.Pending); err != nil {
+		return errors.Wrap(err, "pending")
+	}
+
 	if err := binary.Write(buf, binary.LittleEndian, u.Reserved); err != nil {
 		return errors.Wrap(err, "reserved")
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, u.Deleted); err != nil {
+		return errors.Wrap(err, "deleted")
 	}
 
 	return nil
@@ -222,8 +232,16 @@ func (u *UTXO) Deserialize(buf *bytes.Reader) error {
 		u.KeyHash = nil
 	}
 
+	if err := binary.Read(buf, binary.LittleEndian, &u.Pending); err != nil {
+		return errors.Wrap(err, "pending")
+	}
+
 	if err := binary.Read(buf, binary.LittleEndian, &u.Reserved); err != nil {
 		return errors.Wrap(err, "reserved")
+	}
+
+	if err := binary.Read(buf, binary.LittleEndian, &u.Deleted); err != nil {
+		return errors.Wrap(err, "deleted")
 	}
 
 	return nil
