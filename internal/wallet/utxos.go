@@ -129,6 +129,12 @@ func (w *Wallet) CreateUTXO(ctx context.Context, utxo *UTXO) error {
 		return nil
 	}
 
+	for _, currentUTXO := range utxos {
+		if currentUTXO.UTXO.Index == utxo.UTXO.Index {
+			return nil // already exists
+		}
+	}
+
 	utxos = append(utxos, utxo)
 	w.utxos[utxo.UTXO.Hash] = utxos
 	return nil

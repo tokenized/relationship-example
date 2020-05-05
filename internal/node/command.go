@@ -136,18 +136,28 @@ func (n *Node) ProcessCommand(ctx context.Context, command []byte) ([]byte, erro
 		return ra.Bytes(), nil
 
 	case CommandInitiate:
-		var ra bitcoin.RawAddress
-		if err := ra.Deserialize(buf); err != nil {
-			return nil, errors.Wrap(err, "deserialize address")
+		var count uint32
+		if err := binary.Read(buf, binary.LittleEndian, &count); err != nil {
+			return nil, errors.Wrap(err, "member count")
 		}
 
-		publicKey, err := ra.GetPublicKey()
-		if err != nil {
-			return nil, errors.Wrap(err, "get public key")
+		members := make([]bitcoin.PublicKey, 0, count)
+		for i := uint32(0); i < count; i++ {
+			var ra bitcoin.RawAddress
+			if err := ra.Deserialize(buf); err != nil {
+				return nil, errors.Wrap(err, "deserialize address")
+			}
+
+			publicKey, err := ra.GetPublicKey()
+			if err != nil {
+				return nil, errors.Wrap(err, "get public key")
+			}
+
+			members = append(members, publicKey)
 		}
 
-		// TODO Add support for more receivers and proof of identity --ce
-		txid, _, err := n.rs.InitiateRelationship(ctx, []bitcoin.PublicKey{publicKey}, nil)
+		// TODO Add support for proof of identity --ce
+		txid, _, err := n.rs.InitiateRelationship(ctx, members, nil)
 		if err != nil {
 			return nil, errors.Wrap(err, "initiate relationship")
 		}

@@ -142,6 +142,7 @@ func (n *Node) PreprocessTx(ctx context.Context, tx *wire.MsgTx) error {
 	defer n.processLock.Unlock()
 
 	logger.Info(ctx, "Pre-processing tx : %s", tx.TxHash().String())
+	logger.Info(ctx, "Full tx : \n%s\n", tx.StringWithAddresses(n.cfg.Net))
 
 	if err := n.wallet.ProcessUTXOs(ctx, tx, true); err != nil {
 		return errors.Wrap(err, "process utxos")

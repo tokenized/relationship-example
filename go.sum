@@ -94,6 +94,8 @@ github.com/tokenized/envelope v0.2.2-0.20200429034414-65caa69baf89 h1:ukOG1uxFRe
 github.com/tokenized/envelope v0.2.2-0.20200429034414-65caa69baf89/go.mod h1:O+dbfZiMYuYUmodMP7vGn9FZqtZeDuDWQLomyDNms4w=
 github.com/tokenized/envelope v0.2.2-0.20200430030742-ea2c0a760311 h1:2qzWLVSrV1QuXw6TiLR4YB84GVYel14xxuFs8rg6As4=
 github.com/tokenized/envelope v0.2.2-0.20200430030742-ea2c0a760311/go.mod h1:NPpMU3yddpFlUhXpHGjvsi/C8SGta3aWK7Ss6coNnDw=
+github.com/tokenized/envelope v0.2.2-0.20200505050634-2337f3403f49 h1:hF9cDIRwoyCGMbRtNZKExtdsZMjfP0nDTcjf/9UHlCo=
+github.com/tokenized/envelope v0.2.2-0.20200505050634-2337f3403f49/go.mod h1:NPpMU3yddpFlUhXpHGjvsi/C8SGta3aWK7Ss6coNnDw=
 github.com/tokenized/smart-contract v0.2.2-0.20200103005916-b230b5e28e16/go.mod h1:3oWcq6AOuFrBBe/Vz1a9ucjM3kKSjjo8n2B1n+Sr+X0=
 github.com/tokenized/smart-contract v0.2.2-0.20200105215152-0ca6d7ce006b/go.mod h1:3oWcq6AOuFrBBe/Vz1a9ucjM3kKSjjo8n2B1n+Sr+X0=
 github.com/tokenized/smart-contract v0.2.2 h1:OgnTV1t6+aiG9u4pmle2hfTTwyHkdy/j/zFcFSEP3tY=

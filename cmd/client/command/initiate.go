@@ -2,6 +2,7 @@ package command
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 
 	"github.com/tokenized/relationship-example/internal/node"
@@ -14,12 +15,12 @@ import (
 )
 
 var commandInitiate = &cobra.Command{
-	Use:   "initiate <public key address>",
-	Short: "Initiate a relationship with the public key address specified.",
+	Use:   "initiate <public key address> ...",
+	Short: "Initiate a relationship with the public key addresses specified.",
 	RunE: func(c *cobra.Command, args []string) error {
 		ctx := Context()
 
-		if len(args) != 1 {
+		if len(args) < 1 {
 			c.Help()
 			logger.Fatal(ctx, "Wrong number of arguments")
 		}
@@ -39,14 +40,20 @@ var commandInitiate = &cobra.Command{
 			logger.Fatal(ctx, "Failed to write command name : %s", err)
 		}
 
-		ad, err := bitcoin.DecodeAddress(args[0])
-		if err != nil {
-			logger.Fatal(ctx, "Failed to parse address : %s", err)
+		if err := binary.Write(&buf, binary.LittleEndian, uint32(len(args))); err != nil {
+			logger.Fatal(ctx, "Failed to write member count : %s", err)
 		}
 
-		ra := bitcoin.NewRawAddressFromAddress(ad)
-		if _, err := buf.Write(ra.Bytes()); err != nil {
-			logger.Fatal(ctx, "Failed to write raw address : %s", err)
+		for _, arg := range args {
+			ad, err := bitcoin.DecodeAddress(arg)
+			if err != nil {
+				logger.Fatal(ctx, "Failed to parse address : %s", err)
+			}
+
+			ra := bitcoin.NewRawAddressFromAddress(ad)
+			if _, err := buf.Write(ra.Bytes()); err != nil {
+				logger.Fatal(ctx, "Failed to write raw address : %s", err)
+			}
 		}
 
 		response, err := node.SendCommand(ctx, cfg, buf.Bytes())

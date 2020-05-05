@@ -285,14 +285,14 @@ func (rs *Relationships) DecryptAction(ctx context.Context, itx *inspector.Trans
 		return rs.wallet.DecryptActionDirect(ctx, itx.MsgTx, index)
 	}
 
-	logger.Info(ctx, "Found relationship for decryption : %x", flag)
+	logger.Info(ctx, "Found relationship for decryption : %s", r.TxId.String())
 
 	if r.EncryptionType == 0 { // Relationship uses direct encryption
-		logger.Info(ctx, "Relationship uses direct encryption : %x", flag)
+		logger.Info(ctx, "Relationship uses direct encryption : %s", r.TxId.String())
 		return rs.wallet.DecryptActionDirect(ctx, itx.MsgTx, index)
 	}
 
-	logger.Info(ctx, "Relationship uses indirect encryption : %x", flag)
+	logger.Info(ctx, "Relationship uses indirect encryption : %s", r.TxId.String())
 
 	// Find appropriate encryption key based on sender public key.
 	// The encryption key is based on which key is used to create the message.
