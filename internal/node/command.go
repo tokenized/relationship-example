@@ -11,6 +11,8 @@ import (
 
 	"github.com/tokenized/relationship-example/internal/platform/config"
 
+	"github.com/tokenized/specification/dist/golang/messages"
+
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
 	"github.com/tokenized/smart-contract/pkg/logger"
 
@@ -21,6 +23,8 @@ const (
 	CommandReceive  = "rec"
 	CommandInitiate = "ini"
 	CommandAccept   = "acc"
+	CommandMessage  = "mes"
+	CommandList     = "lst"
 )
 
 func (n *Node) RunCommandServer(ctx context.Context) error {
@@ -166,7 +170,58 @@ func (n *Node) ProcessCommand(ctx context.Context, command []byte) ([]byte, erro
 			return nil, errors.Wrap(err, "accept relationship")
 		}
 
-		return []byte("Success"), nil
+		return []byte("Accept Sent"), nil
+
+	case CommandMessage:
+		var txid bitcoin.Hash32
+		if err := txid.Deserialize(buf); err != nil {
+			return nil, errors.Wrap(err, "deserialize txid")
+		}
+
+		r := n.rs.FindRelationshipForTxId(ctx, txid)
+		if r == nil {
+			return nil, errors.New("Relationship not found")
+		}
+
+		var size uint32
+		if err := binary.Read(buf, binary.LittleEndian, &size); err != nil {
+			return nil, errors.Wrap(err, "read message size")
+		}
+
+		b := make([]byte, size)
+		if _, err := buf.Read(b); err != nil {
+			return nil, errors.Wrap(err, "read message")
+		}
+
+		// Plain text message
+		message := &messages.PrivateMessage{
+			PrivateMessage: &messages.DocumentField{
+				Type:     "text/plain",
+				Contents: b,
+			},
+		}
+
+		if err := n.rs.SendMessage(ctx, r, message); err != nil {
+			return nil, errors.Wrap(err, "send message")
+		}
+
+		return []byte("Message Sent"), nil
+
+	case CommandList:
+		l := n.rs.ListRelationships(ctx)
+
+		var buf bytes.Buffer
+		if err := binary.Write(&buf, binary.LittleEndian, uint32(len(l))); err != nil {
+			return nil, errors.Wrap(err, "write relationship count")
+		}
+
+		for _, r := range l {
+			if _, err := buf.Write(r.TxId[:]); err != nil {
+				return nil, errors.Wrap(err, "write relationship")
+			}
+		}
+
+		return buf.Bytes(), nil
 	}
 
 	return nil, fmt.Errorf("Unknown command name : %s", string(name))

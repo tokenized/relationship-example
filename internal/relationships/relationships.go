@@ -48,6 +48,18 @@ func NewRelationships(cfg *config.Config, wallet *wallet.Wallet, broadcastTx wal
 	return result, nil
 }
 
+func (rs *Relationships) ListRelationships(ctx context.Context) []*Relationship {
+	rs.lock.Lock()
+	defer rs.lock.Unlock()
+
+	result := make([]*Relationship, 0, len(rs.Relationships))
+	for _, r := range rs.Relationships {
+		result = append(result, r)
+	}
+
+	return result
+}
+
 func (rs *Relationships) GetRelationship(ctx context.Context, keyType, keyIndex uint32) *Relationship {
 	rs.lock.Lock()
 	defer rs.lock.Unlock()
@@ -252,6 +264,8 @@ func (rs *Relationships) GetRelationshipForTx(ctx context.Context, itx *inspecto
 			}
 		}
 	}
+
+	logger.Info(ctx, "Found relationship : %s", r.TxId.String())
 
 	return r, areSender, memberIndex, nil
 }

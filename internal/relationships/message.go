@@ -3,23 +3,29 @@ package relationships
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 
 	"github.com/tokenized/envelope/pkg/golang/envelope/v0"
 
 	"github.com/tokenized/relationship-example/internal/wallet"
 
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
+	"github.com/tokenized/smart-contract/pkg/inspector"
 	"github.com/tokenized/smart-contract/pkg/logger"
 	"github.com/tokenized/smart-contract/pkg/txbuilder"
 
 	"github.com/tokenized/specification/dist/golang/actions"
+	"github.com/tokenized/specification/dist/golang/messages"
 	"github.com/tokenized/specification/dist/golang/protocol"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 )
 
-func (rs *Relationships) SendMessage(ctx context.Context, r *Relationship, message *actions.Message) error {
+func (rs *Relationships) SendMessage(ctx context.Context, r *Relationship, message messages.Message) error {
+	logger.Info(ctx, "Creating message for relationship : %s", r.TxId.String())
+
 	if !r.Accepted {
 		return errors.New("Relationship not accepted")
 	}
@@ -94,9 +100,14 @@ func (rs *Relationships) SendMessage(ctx context.Context, r *Relationship, messa
 		return errors.New("Unsupported envelope version")
 	}
 
+	messagePayload, err := message.Bytes()
+	if err != nil {
+		return errors.Wrap(err, "Serialize message")
+	}
+
 	privateMessage := &actions.Message{
-		MessageCode:    message.MessageCode,
-		MessagePayload: message.MessagePayload,
+		MessageCode:    message.Code(),
+		MessagePayload: messagePayload,
 	}
 
 	privatePayload, err := proto.Marshal(privateMessage)
@@ -135,11 +146,6 @@ func (rs *Relationships) SendMessage(ctx context.Context, r *Relationship, messa
 		return errors.Wrap(err, "add message op return")
 	}
 
-	if err := rs.wallet.AddIndependentKey(ctx, nextKey.PublicKey(), r.KeyType, r.KeyIndex,
-		r.NextHash); err != nil {
-		return errors.Wrap(err, "add independent key")
-	}
-
 	logger.Info(ctx, "Adding key funding")
 	if err := rs.wallet.AddKeyFunding(ctx, r.KeyType, r.KeyIndex, r.NextHash, tx, rs.broadcastTx); err != nil {
 		return errors.Wrap(err, "add key funding")
@@ -154,6 +160,41 @@ func (rs *Relationships) SendMessage(ctx context.Context, r *Relationship, messa
 		for _, m := range r.Members {
 			m.IncrementHash()
 		}
+	}
+
+	return nil
+}
+
+func (rs *Relationships) ProcessPrivateMessage(ctx context.Context, itx *inspector.Transaction,
+	message *actions.Message, privateMessage *messages.PrivateMessage, flag []byte) error {
+
+	logger.Info(ctx, "Processing private message for relationship")
+
+	// Get relationship
+	r, areSender, memberIndex, err := rs.GetRelationshipForTx(ctx, itx, message, flag)
+	if err != nil {
+		return errors.Wrap(err, "get relationship")
+	}
+	if r == nil {
+		return ErrNotFound
+	}
+
+	if len(message.SenderIndexes) > 1 {
+		return fmt.Errorf("More than one sender not supported : %d", len(message.SenderIndexes))
+	}
+
+	if areSender {
+		logger.Info(ctx, "We are sender")
+	} else {
+		ra, err := r.Members[memberIndex].BaseKey.RawAddress()
+		if err == nil {
+			logger.Info(ctx, "Message from %s",
+				bitcoin.NewAddressFromRawAddress(ra, rs.cfg.Net).String())
+		}
+	}
+
+	if js, err := json.MarshalIndent(privateMessage, "", "    "); err == nil {
+		logger.Info(ctx, "Message contents : \n%s\n", js)
 	}
 
 	return nil

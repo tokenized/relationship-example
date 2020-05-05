@@ -68,6 +68,9 @@ func (w *Wallet) DecryptActionDirect(ctx context.Context, tx *wire.MsgTx,
 			return nil, bitcoin.Hash32{}, errors.Wrap(err, "sender address")
 		}
 
+		logger.Info(ctx, "Decrypt checking sender address : %s",
+			bitcoin.NewAddressFromRawAddress(senderAddress, w.cfg.Net).String())
+
 		address, err := w.FindAddress(ctx, senderAddress)
 		if err != nil {
 			return nil, bitcoin.Hash32{}, errors.Wrap(err, "find address")
@@ -116,6 +119,7 @@ func (w *Wallet) DecryptActionDirect(ctx context.Context, tx *wire.MsgTx,
 		for _, receiverAddress := range receiverAddresses {
 			logger.Info(ctx, "Decrypt checking receiver address : %s",
 				bitcoin.NewAddressFromRawAddress(receiverAddress, w.cfg.Net).String())
+
 			address, err := w.FindAddress(ctx, receiverAddress)
 			if err != nil {
 				return nil, bitcoin.Hash32{}, errors.Wrap(err, "find address")

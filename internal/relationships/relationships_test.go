@@ -631,21 +631,11 @@ func TestMessageDirect(t *testing.T) {
 
 	logger.Info(ctx, "Sending private message ****************************************************")
 
-	sendPrivateMessage := messages.PrivateMessage{
+	sendPrivateMessage := &messages.PrivateMessage{
 		Subject: "Sample encrypted message",
 	}
 
-	var pmBuf bytes.Buffer
-	if err := sendPrivateMessage.Serialize(&pmBuf); err != nil {
-		t.Fatalf("Failed to serialize private message : %s", err)
-	}
-
-	sendMessage := &actions.Message{
-		MessageCode:    messages.CodePrivateMessage,
-		MessagePayload: pmBuf.Bytes(),
-	}
-
-	err = sendRS.SendMessage(ctx, sendRS.Relationships[0], sendMessage)
+	err = sendRS.SendMessage(ctx, sendRS.Relationships[0], sendPrivateMessage)
 	if err != nil {
 		t.Fatalf("Failed to send message : %s", err)
 	}
@@ -712,21 +702,11 @@ func TestMessageIndirect(t *testing.T) {
 
 	logger.Info(ctx, "Sending private message ****************************************************")
 
-	sendPrivateMessage := messages.PrivateMessage{
+	sendPrivateMessage := &messages.PrivateMessage{
 		Subject: "Sample encrypted message",
 	}
 
-	var pmBuf bytes.Buffer
-	if err := sendPrivateMessage.Serialize(&pmBuf); err != nil {
-		t.Fatalf("Failed to serialize private message : %s", err)
-	}
-
-	sendMessage := &actions.Message{
-		MessageCode:    messages.CodePrivateMessage,
-		MessagePayload: pmBuf.Bytes(),
-	}
-
-	err = sendRS.SendMessage(ctx, sendRS.Relationships[0], sendMessage)
+	err = sendRS.SendMessage(ctx, sendRS.Relationships[0], sendPrivateMessage)
 	if err != nil {
 		t.Fatalf("Failed to send message : %s", err)
 	}

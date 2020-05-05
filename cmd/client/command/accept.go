@@ -19,6 +19,11 @@ var commandAccept = &cobra.Command{
 	RunE: func(c *cobra.Command, args []string) error {
 		ctx := Context()
 
+		if len(args) != 1 {
+			c.Help()
+			logger.Fatal(ctx, "Wrong number of arguments")
+		}
+
 		envConfig, err := config.Environment()
 		if err != nil {
 			logger.Fatal(ctx, "Failed to get config : %s", err)
@@ -27,10 +32,6 @@ var commandAccept = &cobra.Command{
 		cfg, err := envConfig.Config()
 		if err != nil {
 			logger.Fatal(ctx, "Failed to convert config : %s", err)
-		}
-
-		if len(args) != 1 {
-			logger.Fatal(ctx, "Wrong number of arguments")
 		}
 
 		txid, err := bitcoin.NewHash32FromStr(args[0])
@@ -56,7 +57,7 @@ var commandAccept = &cobra.Command{
 			logger.Fatal(ctx, "Error Response : %s", m)
 		}
 
-		fmt.Printf("Relationship accepted : %s\n", string(response))
+		fmt.Printf("%s\n", string(response))
 		return nil
 	},
 }

@@ -2,6 +2,7 @@ package command
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 
 	"github.com/tokenized/relationship-example/internal/node"
@@ -13,16 +14,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var commandInitiate = &cobra.Command{
-	Use:   "initiate <public key address>",
-	Short: "Initiate a relationship with the public key address specified.",
+var commandList = &cobra.Command{
+	Use:   "list",
+	Short: "Lists the relationships available.",
 	RunE: func(c *cobra.Command, args []string) error {
 		ctx := Context()
-
-		if len(args) != 1 {
-			c.Help()
-			logger.Fatal(ctx, "Wrong number of arguments")
-		}
 
 		envConfig, err := config.Environment()
 		if err != nil {
@@ -35,18 +31,8 @@ var commandInitiate = &cobra.Command{
 		}
 
 		var buf bytes.Buffer
-		if _, err := buf.Write([]byte(node.CommandInitiate)); err != nil {
+		if _, err := buf.Write([]byte(node.CommandList)); err != nil {
 			logger.Fatal(ctx, "Failed to write command name : %s", err)
-		}
-
-		ad, err := bitcoin.DecodeAddress(args[0])
-		if err != nil {
-			logger.Fatal(ctx, "Failed to parse address : %s", err)
-		}
-
-		ra := bitcoin.NewRawAddressFromAddress(ad)
-		if _, err := buf.Write(ra.Bytes()); err != nil {
-			logger.Fatal(ctx, "Failed to write raw address : %s", err)
 		}
 
 		response, err := node.SendCommand(ctx, cfg, buf.Bytes())
@@ -58,12 +44,21 @@ var commandInitiate = &cobra.Command{
 			logger.Fatal(ctx, "Error Response : %s", m)
 		}
 
-		txid, err := bitcoin.NewHash32(response)
-		if err != nil {
-			logger.Fatal(ctx, "Failed to create txid : %s", err)
+		var count uint32
+		read := bytes.NewReader(response)
+		if err := binary.Read(read, binary.LittleEndian, &count); err != nil {
+			logger.Fatal(ctx, "Failed to read relationships count : %s", err)
 		}
 
-		fmt.Printf("Relationship created with txid : %s\n", txid.String())
+		fmt.Printf("List : \n")
+		for i := uint32(0); i < count; i++ {
+			var txid bitcoin.Hash32
+			if err := txid.Deserialize(read); err != nil {
+				logger.Fatal(ctx, "Failed to read relationship : %s", err)
+			}
+			fmt.Printf("  %s\n", txid.String())
+		}
+
 		return nil
 	},
 }

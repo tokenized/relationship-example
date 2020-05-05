@@ -27,6 +27,8 @@ func Execute() {
 	clientCommand.AddCommand(commandReceive)
 	clientCommand.AddCommand(commandInitiate)
 	clientCommand.AddCommand(commandAccept)
+	clientCommand.AddCommand(commandMessage)
+	clientCommand.AddCommand(commandList)
 	clientCommand.Execute()
 }
 

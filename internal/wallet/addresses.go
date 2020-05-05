@@ -1,6 +1,7 @@
 package wallet
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 
@@ -76,11 +77,26 @@ func (w *Wallet) FindAddress(ctx context.Context, ra bitcoin.RawAddress) (*Addre
 		}
 
 		if result.Address.Equal(ra) {
+			logger.Info(ctx, "Address found for match : %s",
+				bitcoin.NewAddressFromRawAddress(ra, w.cfg.Net).String())
 			return result, nil
 		}
 
 		publicKey, err := ra.GetPublicKey()
 		if err == nil && publicKey.Equal(result.PublicKey) {
+			logger.Info(ctx, "Address found for public key : %s",
+				bitcoin.NewAddressFromRawAddress(ra, w.cfg.Net).String())
+			logger.Info(ctx, "Saved address : %s",
+				bitcoin.NewAddressFromRawAddress(result.Address, w.cfg.Net).String())
+			return result, nil
+		}
+
+		publicKeyHash, err := ra.GetPublicKeyHash()
+		if err == nil && bytes.Equal(publicKeyHash.Bytes(), bitcoin.Hash160(result.PublicKey.Bytes())) {
+			logger.Info(ctx, "Address found for public key hash : %s",
+				bitcoin.NewAddressFromRawAddress(ra, w.cfg.Net).String())
+			logger.Info(ctx, "Saved address : %s",
+				bitcoin.NewAddressFromRawAddress(result.Address, w.cfg.Net).String())
 			return result, nil
 		}
 	}

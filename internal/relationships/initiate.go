@@ -81,6 +81,13 @@ func (rs *Relationships) InitiateRelationship(ctx context.Context,
 		if err != nil {
 			return bitcoin.Hash32{}, nil, errors.Wrap(err, "next key")
 		}
+		nextAddress, err := bitcoin.NewRawAddressPublicKey(nextKey)
+		if err != nil {
+			return bitcoin.Hash32{}, nil, errors.Wrap(err, "next address")
+		}
+
+		logger.Info(ctx, "Relationship member : %s",
+			bitcoin.NewAddressFromRawAddress(nextAddress, rs.cfg.Net).String())
 
 		r.Members = append(r.Members, &Member{
 			BaseKey:   receiver,
@@ -217,12 +224,16 @@ func (rs *Relationships) InitiateRelationship(ctx context.Context,
 		return bitcoin.Hash32{}, nil, errors.Wrap(err, "add independent key")
 	}
 
+	logger.Info(ctx, "Initiated relationship : %s", r.TxId.String())
+
 	return r.TxId, initiate, nil
 }
 
 func (rs *Relationships) ProcessInitiateRelationship(ctx context.Context,
 	itx *inspector.Transaction, message *actions.Message, initiate *messages.InitiateRelationship,
 	encryptionKey bitcoin.Hash32) error {
+
+	logger.Info(ctx, "Processing initiate for relationship : %s", itx.Hash.String())
 
 	// Check for pre-existing
 	for _, r := range rs.Relationships {
@@ -303,8 +314,8 @@ func (rs *Relationships) ProcessInitiateRelationship(ctx context.Context,
 					return errors.Wrap(err, "next key")
 				}
 
-				if err := rs.wallet.AddIndependentKey(ctx, r.NextKey, r.KeyType,
-					r.KeyIndex, r.NextHash); err != nil {
+				if err := rs.wallet.AddIndependentKey(ctx, r.NextKey, r.KeyType, r.KeyIndex,
+					r.NextHash); err != nil {
 					return errors.Wrap(err, "add independent key")
 				}
 

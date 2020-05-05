@@ -275,6 +275,7 @@ func (w *Wallet) Deserialize(buf *bytes.Reader) error {
 
 	// Read standard addresses
 	w.addressesList = make([][]*Address, KeyTypeCount)
+	w.addressesMap = make(map[bitcoin.Hash20]*Address)
 	for t := 0; t < KeyTypeCount; t++ {
 		if err := binary.Read(buf, binary.LittleEndian, &count); err != nil {
 			return errors.Wrap(err, "addresses size")

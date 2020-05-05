@@ -130,6 +130,7 @@ github.com/tokenized/specification v0.2.3-0.20200430200904-7d9c30ffd18b h1:/v+m7
 github.com/tokenized/specification v0.2.3-0.20200430200904-7d9c30ffd18b/go.mod h1:jH3GzsLUUTFX0dXzp9c19uATbe2HXUj9q74AjQZtPRo=
 github.com/tokenized/specification v0.2.3-0.20200501023240-01e15ae8f8bc h1:DH/tp1Ml6sjp0teAluxAl6oypHlMKLKoRHG1VfF3fpA=
 github.com/tokenized/specification v0.2.3-0.20200501023240-01e15ae8f8bc/go.mod h1:jH3GzsLUUTFX0dXzp9c19uATbe2HXUj9q74AjQZtPRo=
+github.com/tokenized/teller v0.0.0-20200403032101-bf313d723f17 h1:14hO49twf3G+ZgA1Auhv4EtoMty6IhCM1n65z3jgIok=
 github.com/tyler-smith/go-bip32 v0.0.0-20170922074101-2c9cfd177564 h1:NXXyQVeRVLK8Xu27/hkkjwVOZLk5v4ZBEvvMtqMqznM=
 github.com/tyler-smith/go-bip32 v0.0.0-20170922074101-2c9cfd177564/go.mod h1:0/YuQQF676+d4CMNclTqGUam1EDwz0B8o03K9pQqA3c=
 github.com/ugorji/go/codec v0.0.0-20181204163529-d75b2dcb6bc8/go.mod h1:VFNgLljTbGfSG7qAOspJ7OScBnGdDN/yBr0sguwnwf0=
@@ -183,6 +184,7 @@ google.golang.org/genproto v0.0.0-20190425155659-357c62f0e4bb/go.mod h1:VzzqZJRn
 google.golang.org/grpc v1.19.0/go.mod h1:mqu4LbDTu4XGKhr4mRzUsmM4RtVoemTSY81AxZiDr8c=
 google.golang.org/grpc v1.20.1/go.mod h1:10oTOabMzJvdu6/UiuZezV6QK5dSlG84ov/aaiqXj38=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/fsnotify.v1 v1.4.7/go.mod h1:Tz8NjZHkW78fSQdbUxIjBTcgA1z1m8ZHf0WmKUhAMys=
 gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7/go.mod h1:dt/ZhP58zS4L8KSrWDmTeBkI65Dw0HsyUHuEVlX15mw=
 gopkg.in/yaml.v2 v2.2.1/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=

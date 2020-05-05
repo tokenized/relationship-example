@@ -25,6 +25,11 @@ var commandReceive = &cobra.Command{
 	RunE: func(c *cobra.Command, args []string) error {
 		ctx := Context()
 
+		if len(args) != 0 {
+			c.Help()
+			logger.Fatal(ctx, "Wrong number of arguments")
+		}
+
 		envConfig, err := config.Environment()
 		if err != nil {
 			logger.Fatal(ctx, "Failed to get config : %s", err)

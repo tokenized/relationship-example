@@ -29,6 +29,8 @@ import (
 func (rs *Relationships) AcceptRelationship(ctx context.Context, r *Relationship,
 	proofOfIdentity proto.Message) (*messages.AcceptRelationship, error) {
 
+	logger.Info(ctx, "Creating accept for relationship : %s", r.TxId.String())
+
 	if r.Accepted {
 		return nil, errors.New("Already accepted")
 	}
@@ -86,6 +88,13 @@ func (rs *Relationships) AcceptRelationship(ctx context.Context, r *Relationship
 	if err != nil {
 		return nil, errors.Wrap(err, "next key")
 	}
+	nextAddress, err := nextKey.RawAddress()
+	if err != nil {
+		return nil, errors.Wrap(err, "next key")
+	}
+
+	logger.Info(ctx, "Sending accept from address : %s",
+		bitcoin.NewAddressFromRawAddress(nextAddress, rs.cfg.Net).String())
 
 	receivers := make([]bitcoin.PublicKey, 0, len(r.Members))
 	if r.EncryptionType == 0 { // direct encryption
@@ -185,6 +194,8 @@ func (rs *Relationships) AcceptRelationship(ctx context.Context, r *Relationship
 func (rs *Relationships) ProcessAcceptRelationship(ctx context.Context, itx *inspector.Transaction,
 	message *actions.Message, accept *messages.AcceptRelationship, flag []byte) error {
 
+	logger.Info(ctx, "Processing accept for relationship")
+
 	// Get relationship
 	r, areSender, memberIndex, err := rs.GetRelationshipForTx(ctx, itx, message, flag)
 	if err != nil {
@@ -204,8 +215,8 @@ func (rs *Relationships) ProcessAcceptRelationship(ctx context.Context, itx *ins
 	} else {
 		ra, err := r.Members[memberIndex].BaseKey.RawAddress()
 		if err == nil {
-			logger.Info(ctx, "Relationship accepted by %s : %s", r.TxId.String(),
-				bitcoin.NewAddressFromRawAddress(ra, rs.cfg.Net).String())
+			logger.Info(ctx, "Relationship accepted by %s : %s",
+				bitcoin.NewAddressFromRawAddress(ra, rs.cfg.Net).String(), r.TxId.String())
 		}
 		r.Members[memberIndex].Accepted = true
 	}

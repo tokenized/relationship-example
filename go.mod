@@ -16,3 +16,5 @@ require (
 	go.opencensus.io v0.22.2
 	launchpad.net/gocheck v0.0.0-20140225173054-000000000087 // indirect
 )
+
+replace launchpad.net/gocheck => gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f
