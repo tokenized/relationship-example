@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/tokenized/envelope/pkg/golang/envelope"
 	"github.com/tokenized/relationship-example/internal/platform/config"
 	"github.com/tokenized/relationship-example/internal/platform/db"
 	"github.com/tokenized/relationship-example/internal/wallet"
@@ -15,6 +16,7 @@ import (
 	"github.com/tokenized/smart-contract/pkg/logger"
 
 	"github.com/tokenized/specification/dist/golang/actions"
+	"github.com/tokenized/specification/dist/golang/protocol"
 
 	"github.com/pkg/errors"
 )
@@ -270,26 +272,96 @@ func (rs *Relationships) GetRelationshipForTx(ctx context.Context, itx *inspecto
 	return r, areSender, memberIndex, nil
 }
 
+func (rs *Relationships) FindHash(ctx context.Context, r *Relationship,
+	publicKey bitcoin.PublicKey) (bitcoin.Hash32, error) {
+
+	if r.NextKey.Equal(publicKey) {
+		logger.Info(ctx, "Key matches our next key %d", r.NextIndex)
+		return r.NextHash, nil
+	}
+
+	// Check current keys
+	for i, m := range r.Members {
+		if m.NextKey.Equal(publicKey) {
+			logger.Info(ctx, "Key matches next key %d for member %d", m.NextIndex, i)
+			return m.NextHash, nil
+		}
+	}
+
+	// Check past keys
+	baseKey, err := rs.wallet.GetKey(ctx, r.KeyType, r.KeyIndex)
+	if err != nil {
+		return bitcoin.Hash32{}, errors.Wrap(err, "get key")
+	}
+
+	h, in, err := r.FindKey(baseKey.PublicKey(), publicKey)
+	if err == nil {
+		logger.Info(ctx, "Key matches our index %d", in)
+		return h, nil
+	} else if errors.Cause(err) != ErrKeyNotFound {
+		return bitcoin.Hash32{}, errors.Wrap(err, "find key")
+	}
+
+	for i, m := range r.Members {
+		h, in, err := m.FindKey(publicKey, r.Seed)
+		if err != nil {
+			if errors.Cause(err) == ErrKeyNotFound {
+				continue
+			}
+			return bitcoin.Hash32{}, errors.Wrap(err, "find key")
+		}
+
+		logger.Info(ctx, "Key matches index %d for member %d", in, i)
+		return bitcoin.AddHashes(r.EncryptionKey, h), nil
+	}
+
+	return bitcoin.Hash32{}, ErrKeyNotFound
+}
+
+func (rs *Relationships) FindEncryptionKey(ctx context.Context, r *Relationship,
+	publicKey bitcoin.PublicKey) (bitcoin.Hash32, error) {
+
+	hash, err := rs.FindHash(ctx, r, publicKey)
+	if err != nil {
+		return bitcoin.Hash32{}, errors.Wrap(err, "find hash")
+	}
+
+	return bitcoin.AddHashes(r.EncryptionKey, hash), nil
+}
+
 func (rs *Relationships) DecryptAction(ctx context.Context, itx *inspector.Transaction, index int,
 	flag []byte) (actions.Action, bitcoin.Hash32, error) {
+
+	// Reparse the full envelope message
+	env, err := envelope.Deserialize(bytes.NewReader(itx.MsgTx.TxOut[index].PkScript))
+	if err != nil {
+		return nil, bitcoin.Hash32{}, errors.Wrap(err, "deserialize envelope")
+	}
+
+	if !bytes.Equal(env.PayloadProtocol(), protocol.GetProtocolID(rs.cfg.IsTest)) {
+		return nil, bitcoin.Hash32{}, protocol.ErrNotTokenized
+	}
+
+	logger.Info(ctx, "Decrypting action in output %d", index)
+
 	rs.lock.Lock()
 	defer rs.lock.Unlock()
 
 	if len(flag) == 0 { // Not related to a relationship with a indirect encryption
-		return rs.wallet.DecryptActionDirect(ctx, itx.MsgTx, index)
+		return rs.wallet.DecryptActionDirect(ctx, itx.MsgTx, index, env)
 	}
 
 	// Find relationship
 	r := rs.findRelationshipForFlag(ctx, flag)
 	if r == nil { // Not related to a relationship with a indirect encryption
-		return rs.wallet.DecryptActionDirect(ctx, itx.MsgTx, index)
+		return rs.wallet.DecryptActionDirect(ctx, itx.MsgTx, index, env)
 	}
 
 	logger.Info(ctx, "Found relationship for decryption : %s", r.TxId.String())
 
 	if r.EncryptionType == 0 { // Relationship uses direct encryption
 		logger.Info(ctx, "Relationship uses direct encryption : %s", r.TxId.String())
-		return rs.wallet.DecryptActionDirect(ctx, itx.MsgTx, index)
+		return rs.wallet.DecryptActionDirect(ctx, itx.MsgTx, index, env)
 	}
 
 	logger.Info(ctx, "Relationship uses indirect encryption : %s", r.TxId.String())
@@ -310,17 +382,22 @@ func (rs *Relationships) DecryptAction(ctx context.Context, itx *inspector.Trans
 			return nil, bitcoin.Hash32{}, errors.Wrap(err, "get public key")
 		}
 
-		encryptionKey, err := r.FindEncryptionKey(publicKey)
+		logger.Info(ctx, "Checking input %d address : %s", i,
+			bitcoin.NewAddressFromRawAddress(itx.Inputs[i].Address, rs.cfg.Net).String())
+
+		encryptionKey, err := rs.FindEncryptionKey(ctx, r, publicKey)
 		if err != nil {
 			if errors.Cause(err) == ErrKeyNotFound {
+				logger.Info(ctx, "Key not found")
 				continue // this input is not part of this relationship
 			}
 			return nil, bitcoin.Hash32{}, errors.Wrap(err, "find encryption key")
 		}
 
-		action, err := rs.wallet.DecryptActionIndirect(ctx, itx.MsgTx.TxOut[index].PkScript,
-			encryptionKey)
+		logger.Info(ctx, "Decrypting action with indirect key")
+		action, err := rs.wallet.DecryptActionIndirect(ctx, env, encryptionKey)
 		if err != nil {
+			logger.Info(ctx, "Failed to decrypt action indirect : %s", err)
 			return nil, bitcoin.Hash32{}, errors.Wrap(err, "decrypt action indirect")
 		}
 		if action != nil {
@@ -328,7 +405,7 @@ func (rs *Relationships) DecryptAction(ctx context.Context, itx *inspector.Trans
 		}
 	}
 
-	return rs.wallet.DecryptActionDirect(ctx, itx.MsgTx, index)
+	return rs.wallet.DecryptActionDirect(ctx, itx.MsgTx, index, env)
 }
 
 func (rs *Relationships) Load(ctx context.Context, dbConn *db.DB) error {

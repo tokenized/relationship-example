@@ -291,7 +291,7 @@ func (rs *Relationships) ProcessInitiateRelationship(ctx context.Context,
 		if !keyFound {
 			ra, err := publicKey.RawAddress()
 			if err != nil {
-				return errors.Wrap(err, "sender address")
+				return errors.Wrap(err, "sender raw address")
 			}
 
 			ad, err := rs.wallet.FindAddress(ctx, ra)
@@ -300,6 +300,8 @@ func (rs *Relationships) ProcessInitiateRelationship(ctx context.Context,
 			}
 
 			if ad != nil {
+				logger.Info(ctx, "We are sender")
+
 				// We are sender
 				if ad.KeyType != wallet.KeyTypeRelateOut {
 					return fmt.Errorf("Wrong key type for relationship sender : %s",
@@ -328,6 +330,13 @@ func (rs *Relationships) ProcessInitiateRelationship(ctx context.Context,
 		if err != nil {
 			return errors.Wrap(err, "next key")
 		}
+
+		ra, err := publicKey.RawAddress()
+		if err != nil {
+			return errors.Wrap(err, "sender raw address")
+		}
+		logger.Info(ctx, "Adding member : %s",
+			bitcoin.NewAddressFromRawAddress(ra, rs.cfg.Net).String())
 
 		r.Members = append(r.Members, &Member{
 			BaseKey:   publicKey,
@@ -363,6 +372,7 @@ func (rs *Relationships) ProcessInitiateRelationship(ctx context.Context,
 			}
 
 			if ad != nil {
+				logger.Info(ctx, "We are receiver %d", receiverIndex)
 				// We are receiver
 				if ad.KeyType != wallet.KeyTypeRelateIn {
 					return fmt.Errorf("Wrong key type for relationship sender : %s",
@@ -390,6 +400,13 @@ func (rs *Relationships) ProcessInitiateRelationship(ctx context.Context,
 		if err != nil {
 			return errors.Wrap(err, "next key")
 		}
+
+		ra, err := publicKey.RawAddress()
+		if err != nil {
+			return errors.Wrap(err, "receiver raw address")
+		}
+		logger.Info(ctx, "Adding member : %s",
+			bitcoin.NewAddressFromRawAddress(ra, rs.cfg.Net).String())
 
 		r.Members = append(r.Members, &Member{
 			BaseKey:   publicKey,

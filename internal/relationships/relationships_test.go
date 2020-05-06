@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/tokenized/envelope/pkg/golang/envelope"
 	"github.com/tokenized/relationship-example/internal/platform/tests"
 	"github.com/tokenized/relationship-example/internal/wallet"
 
@@ -56,8 +57,17 @@ func TestInitiate(t *testing.T) {
 
 	messageIndex := 0xffffffff
 	var message *actions.Message
-	for index, _ := range tx.TxOut {
-		action, _, err := wallet.DecryptActionDirect(ctx, tx, index)
+	for index, output := range tx.TxOut {
+		env, err := envelope.Deserialize(bytes.NewReader(output.PkScript))
+		if err != nil {
+			continue
+		}
+
+		if !bytes.Equal(env.PayloadProtocol(), protocol.GetProtocolID(cfg.IsTest)) {
+			continue
+		}
+
+		action, _, err := wallet.DecryptActionDirect(ctx, tx, index, env)
 		if err != nil {
 			continue
 		}
@@ -150,8 +160,17 @@ func TestInitiateMulti(t *testing.T) {
 
 	messageIndex := 0xffffffff
 	var message *actions.Message
-	for index, _ := range tx.TxOut {
-		action, _, err := wallet.DecryptActionDirect(ctx, tx, index)
+	for index, output := range tx.TxOut {
+		env, err := envelope.Deserialize(bytes.NewReader(output.PkScript))
+		if err != nil {
+			continue
+		}
+
+		if !bytes.Equal(env.PayloadProtocol(), protocol.GetProtocolID(cfg.IsTest)) {
+			continue
+		}
+
+		action, _, err := wallet.DecryptActionDirect(ctx, tx, index, env)
 		if err != nil {
 			continue
 		}
@@ -255,9 +274,18 @@ func TestAcceptDirect(t *testing.T) {
 	messageIndex := 0xffffffff
 	var message *actions.Message
 	var encryptionKey bitcoin.Hash32
-	for index, _ := range tx.TxOut {
+	for index, output := range tx.TxOut {
+		env, err := envelope.Deserialize(bytes.NewReader(output.PkScript))
+		if err != nil {
+			continue
+		}
+
+		if !bytes.Equal(env.PayloadProtocol(), protocol.GetProtocolID(cfg.IsTest)) {
+			continue
+		}
+
 		var action actions.Action
-		action, encryptionKey, err = receiveWallet.DecryptActionDirect(ctx, tx, index)
+		action, encryptionKey, err = receiveWallet.DecryptActionDirect(ctx, tx, index, env)
 		if err != nil {
 			continue
 		}
@@ -320,9 +348,18 @@ func TestAcceptDirect(t *testing.T) {
 	t.Logf("Accept Tx : \n%s\n", tx.StringWithAddresses(cfg.Net))
 
 	messageIndex = 0xffffffff
-	for index, _ := range tx.TxOut {
+	for index, output := range tx.TxOut {
+		env, err := envelope.Deserialize(bytes.NewReader(output.PkScript))
+		if err != nil {
+			continue
+		}
+
+		if !bytes.Equal(env.PayloadProtocol(), protocol.GetProtocolID(cfg.IsTest)) {
+			continue
+		}
+
 		var action actions.Action
-		action, encryptionKey, err = receiveWallet.DecryptActionDirect(ctx, tx, index)
+		action, encryptionKey, err = receiveWallet.DecryptActionDirect(ctx, tx, index, env)
 		if err != nil {
 			continue
 		}
@@ -454,9 +491,18 @@ func TestAcceptIndirect(t *testing.T) {
 	messageIndex := 0xffffffff
 	var message *actions.Message
 	var encryptionKey bitcoin.Hash32
-	for index, _ := range tx.TxOut {
+	for index, output := range tx.TxOut {
+		env, err := envelope.Deserialize(bytes.NewReader(output.PkScript))
+		if err != nil {
+			continue
+		}
+
+		if !bytes.Equal(env.PayloadProtocol(), protocol.GetProtocolID(cfg.IsTest)) {
+			continue
+		}
+
 		var action actions.Action
-		action, encryptionKey, err = receiveWallet.DecryptActionDirect(ctx, tx, index)
+		action, encryptionKey, err = receiveWallet.DecryptActionDirect(ctx, tx, index, env)
 		if err != nil {
 			continue
 		}
@@ -528,7 +574,7 @@ func TestAcceptIndirect(t *testing.T) {
 		t.Fatalf("Failed to invalid sender public key : %s", err)
 	}
 
-	encryptionKey, err = sendRS.Relationships[0].FindEncryptionKey(publicKey)
+	encryptionKey, err = sendRS.FindEncryptionKey(ctx, sendRS.Relationships[0], publicKey)
 	if err != nil {
 		t.Fatalf("Failed to get encryption key : %s", err)
 	}
@@ -539,10 +585,20 @@ func TestAcceptIndirect(t *testing.T) {
 		f, err := protocol.DeserializeFlagOutputScript(output.PkScript)
 		if err == nil {
 			flag = f
+			continue
+		}
+
+		env, err := envelope.Deserialize(bytes.NewReader(output.PkScript))
+		if err != nil {
+			continue
+		}
+
+		if !bytes.Equal(env.PayloadProtocol(), protocol.GetProtocolID(cfg.IsTest)) {
+			continue
 		}
 
 		var action actions.Action
-		action, err = sendWallet.DecryptActionIndirect(ctx, output.PkScript, encryptionKey)
+		action, err = sendWallet.DecryptActionIndirect(ctx, env, encryptionKey)
 		if err != nil {
 			continue
 		}

@@ -7,6 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/tokenized/envelope/pkg/golang/envelope"
+
 	"github.com/tokenized/relationship-example/internal/platform/config"
 	"github.com/tokenized/relationship-example/internal/platform/db"
 	"github.com/tokenized/relationship-example/internal/relationships"
@@ -192,6 +194,9 @@ func (n *Node) ProcessTx(ctx context.Context, tx *wire.MsgTx) error {
 	for index, _ := range itx.MsgTx.TxOut {
 		action, encryptionKey, err := n.rs.DecryptAction(ctx, itx, index, flag)
 		if err != nil {
+			if errors.Cause(err) != envelope.ErrNotEnvelope {
+				logger.Info(ctx, "Failed to decrypt output : %s", err)
+			}
 			continue
 		}
 
@@ -200,6 +205,8 @@ func (n *Node) ProcessTx(ctx context.Context, tx *wire.MsgTx) error {
 			if err := n.ProcessMessage(ctx, itx, index, encryptionKey, message, flag); err != nil {
 				return errors.Wrap(err, "process message")
 			}
+		default:
+			logger.Info(ctx, "%s actions not supported", action.Code())
 		}
 	}
 

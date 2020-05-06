@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/tokenized/relationship-example/internal/wallet"
+
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
 
 	"github.com/pkg/errors"
@@ -13,14 +14,23 @@ var (
 	ErrKeyNotFound = errors.New("Key not found")
 )
 
-func (r *Relationship) FindEncryptionKey(publicKey bitcoin.PublicKey) (bitcoin.Hash32, error) {
-	for _, m := range r.Members {
-		if m.NextKey.Equal(publicKey) {
-			return bitcoin.AddHashes(r.EncryptionKey, m.NextHash), nil
+func (r *Relationship) FindKey(baseKey bitcoin.PublicKey, publicKey bitcoin.PublicKey) (bitcoin.Hash32, uint64, error) {
+	hp, _ := bitcoin.NewHash32(bitcoin.Sha256(r.Seed))
+	h := *hp
+
+	for i := uint64(1); i < r.NextIndex+10; i++ {
+		npk, err := bitcoin.NextPublicKey(baseKey, h)
+		if err != nil {
+			return bitcoin.Hash32{}, 0, errors.Wrap(err, "next public key")
 		}
+		if npk.Equal(publicKey) {
+			return h, i, nil
+		}
+
+		h = bitcoin.NextHash(h)
 	}
 
-	return bitcoin.Hash32{}, ErrKeyNotFound
+	return bitcoin.Hash32{}, 0, ErrKeyNotFound
 }
 
 func (r *Relationship) IncrementHash(ctx context.Context, wallet *wallet.Wallet) error {

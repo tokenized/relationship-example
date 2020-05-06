@@ -1,14 +1,12 @@
 package wallet
 
 import (
-	"bytes"
 	"context"
 
 	"github.com/tokenized/envelope/pkg/golang/envelope"
 	"github.com/tokenized/envelope/pkg/golang/envelope/v0"
 
 	"github.com/tokenized/specification/dist/golang/actions"
-	"github.com/tokenized/specification/dist/golang/protocol"
 
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
 	"github.com/tokenized/smart-contract/pkg/logger"
@@ -17,18 +15,8 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (w *Wallet) DecryptActionDirect(ctx context.Context, tx *wire.MsgTx,
-	index int) (actions.Action, bitcoin.Hash32, error) {
-
-	// Reparse the full envelope message
-	env, err := envelope.Deserialize(bytes.NewReader(tx.TxOut[index].PkScript))
-	if err != nil {
-		return nil, bitcoin.Hash32{}, errors.Wrap(err, "deserlialize envelope")
-	}
-
-	if !bytes.Equal(env.PayloadProtocol(), protocol.GetProtocolID(w.cfg.IsTest)) {
-		return nil, bitcoin.Hash32{}, protocol.ErrNotTokenized
-	}
+func (w *Wallet) DecryptActionDirect(ctx context.Context, tx *wire.MsgTx, index int,
+	env envelope.BaseMessage) (actions.Action, bitcoin.Hash32, error) {
 
 	payload := env.Payload() // Unencrypted
 	var encryptionKey bitcoin.Hash32
@@ -166,18 +154,8 @@ func (w *Wallet) DecryptActionDirect(ctx context.Context, tx *wire.MsgTx,
 	return a, encryptionKey, nil
 }
 
-func (w *Wallet) DecryptActionIndirect(ctx context.Context, script []byte,
+func (w *Wallet) DecryptActionIndirect(ctx context.Context, env envelope.BaseMessage,
 	encryptionKey bitcoin.Hash32) (actions.Action, error) {
-
-	// Reparse the full envelope message
-	env, err := envelope.Deserialize(bytes.NewReader(script))
-	if err != nil {
-		return nil, errors.Wrap(err, "deserlialize envelope")
-	}
-
-	if !bytes.Equal(env.PayloadProtocol(), protocol.GetProtocolID(w.cfg.IsTest)) {
-		return nil, protocol.ErrNotTokenized
-	}
 
 	payload := env.Payload() // Unencrypted
 	var decrypted []byte
@@ -191,6 +169,7 @@ func (w *Wallet) DecryptActionIndirect(ctx context.Context, script []byte,
 	logger.Verbose(ctx, "Decrypting %d payloads", env0.EncryptedPayloadCount())
 
 	// Decrypt any payloads possible
+	var err error
 	for i := 0; i < env0.EncryptedPayloadCount(); i++ {
 		ep := env0.EncryptedPayload(i)
 
@@ -211,6 +190,8 @@ func (w *Wallet) DecryptActionIndirect(ctx context.Context, script []byte,
 	if err != nil {
 		return nil, errors.Wrap(err, "deserialize action")
 	}
+
+	logger.Info(ctx, "Indirect decryption of %s", a.Code())
 
 	return a, nil
 }

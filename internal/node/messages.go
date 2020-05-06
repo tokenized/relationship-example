@@ -16,7 +16,7 @@ import (
 func (n *Node) ProcessMessage(ctx context.Context, itx *inspector.Transaction, index int,
 	encryptionKey bitcoin.Hash32, message *actions.Message, flag []byte) error {
 
-	logger.Info(ctx, "Processing message : %d", message.MessageCode)
+	logger.Info(ctx, "Processing message code : %d", message.MessageCode)
 
 	p, err := messages.Deserialize(message.MessageCode, message.MessagePayload)
 	if err != nil {
