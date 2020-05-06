@@ -154,6 +154,13 @@ func (n *Node) PreprocessTx(ctx context.Context, tx *wire.MsgTx) error {
 }
 
 func (n *Node) ProcessTx(ctx context.Context, tx *wire.MsgTx) error {
+	_, err := n.wallet.GetTx(ctx, *tx.TxHash())
+	if err == nil {
+		return nil // already processed this tx
+	} else if err != wallet.ErrNotFound {
+		return errors.Wrap(err, "get tx")
+	}
+
 	n.processLock.Lock()
 	defer n.processLock.Unlock()
 
@@ -178,6 +185,10 @@ func (n *Node) ProcessTx(ctx context.Context, tx *wire.MsgTx) error {
 
 	if err := itx.Promote(ctx, n.rpc); err != nil {
 		return errors.Wrap(err, "promote inspector tx")
+	}
+
+	if err := n.wallet.AddTx(ctx, wallet.Transaction{Itx: itx}); err != nil {
+		return errors.Wrap(err, "add tx")
 	}
 
 	// Check for a flag value

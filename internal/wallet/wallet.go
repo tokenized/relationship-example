@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"sync"
 
 	"github.com/tokenized/relationship-example/internal/platform/config"
@@ -17,6 +18,10 @@ import (
 
 const (
 	walletKey = "wallet"
+)
+
+var (
+	ErrNotFound = errors.New("Not found")
 )
 
 type Wallet struct {
@@ -38,6 +43,10 @@ type Wallet struct {
 	addressesMap  map[bitcoin.Hash20]*Address
 	addressesList [][]*Address
 	addressLock   sync.Mutex
+
+	// Transactions
+	txs    map[bitcoin.Hash32]*Transaction
+	txLock sync.Mutex
 }
 
 func NewWallet(cfg *config.Config, keyText string) (*Wallet, error) {
@@ -178,6 +187,11 @@ func (w *Wallet) AreHashesMonitored(hashes []bitcoin.Hash20) (bool, bitcoin.RawA
 }
 
 func (w Wallet) Serialize(buf *bytes.Buffer) error {
+	// Version
+	if err := binary.Write(buf, binary.LittleEndian, uint8(0)); err != nil {
+		return errors.Wrap(err, "version")
+	}
+
 	w.hashLock.Lock()
 	defer w.hashLock.Unlock()
 
@@ -244,10 +258,31 @@ func (w Wallet) Serialize(buf *bytes.Buffer) error {
 		}
 	}
 
+	w.txLock.Lock()
+	defer w.txLock.Unlock()
+
+	if err := binary.Write(buf, binary.LittleEndian, uint64(len(w.txs))); err != nil {
+		return errors.Wrap(err, "txs size")
+	}
+	for _, tx := range w.txs {
+		if err := tx.Serialize(buf); err != nil {
+			return errors.Wrap(err, "serialize tx")
+		}
+	}
+
 	return nil
 }
 
 func (w *Wallet) Deserialize(buf *bytes.Reader) error {
+	var version uint8
+	if err := binary.Read(buf, binary.LittleEndian, &version); err != nil {
+		return errors.Wrap(err, "version")
+	}
+
+	if version != 0 {
+		return fmt.Errorf("Unsupported version : %d", version)
+	}
+
 	w.hashLock.Lock()
 	defer w.hashLock.Unlock()
 
@@ -346,6 +381,22 @@ func (w *Wallet) Deserialize(buf *bytes.Reader) error {
 		}
 
 		w.utxos[utxos[0].UTXO.Hash] = utxos
+	}
+
+	w.txLock.Lock()
+	defer w.txLock.Unlock()
+
+	if err := binary.Read(buf, binary.LittleEndian, &count); err != nil {
+		return errors.Wrap(err, "txs size")
+	}
+	w.txs = make(map[bitcoin.Hash32]*Transaction)
+	for i := uint64(0); i < count; i++ {
+		var tx Transaction
+		if err := tx.Deserialize(buf, w.cfg.IsTest); err != nil {
+			return errors.Wrap(err, "deserialize tx")
+		}
+
+		w.txs[*tx.Itx.Hash] = &tx
 	}
 
 	return nil

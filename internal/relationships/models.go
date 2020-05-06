@@ -3,6 +3,7 @@ package relationships
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 
 	"github.com/tokenized/smart-contract/pkg/bitcoin"
 
@@ -44,6 +45,11 @@ type Member struct {
 }
 
 func (m Member) Serialize(buf *bytes.Buffer) error {
+	// Version
+	if err := binary.Write(buf, binary.LittleEndian, uint8(0)); err != nil {
+		return errors.Wrap(err, "version")
+	}
+
 	if err := m.BaseKey.Serialize(buf); err != nil {
 		return errors.Wrap(err, "base key")
 	}
@@ -64,6 +70,15 @@ func (m Member) Serialize(buf *bytes.Buffer) error {
 }
 
 func (m *Member) Deserialize(buf *bytes.Reader) error {
+	var version uint8
+	if err := binary.Read(buf, binary.LittleEndian, &version); err != nil {
+		return errors.Wrap(err, "version")
+	}
+
+	if version != 0 {
+		return fmt.Errorf("Unsupported version : %d", version)
+	}
+
 	if err := m.BaseKey.Deserialize(buf); err != nil {
 		return errors.Wrap(err, "base key")
 	}
@@ -90,6 +105,11 @@ func (m *Member) Deserialize(buf *bytes.Reader) error {
 }
 
 func (r Relationship) Serialize(buf *bytes.Buffer) error {
+	// Version
+	if err := binary.Write(buf, binary.LittleEndian, uint8(0)); err != nil {
+		return errors.Wrap(err, "version")
+	}
+
 	if err := r.TxId.Serialize(buf); err != nil {
 		return errors.Wrap(err, "txid")
 	}
@@ -149,6 +169,15 @@ func (r Relationship) Serialize(buf *bytes.Buffer) error {
 }
 
 func (r *Relationship) Deserialize(buf *bytes.Reader) error {
+	var version uint8
+	if err := binary.Read(buf, binary.LittleEndian, &version); err != nil {
+		return errors.Wrap(err, "version")
+	}
+
+	if version != 0 {
+		return fmt.Errorf("Unsupported version : %d", version)
+	}
+
 	if err := r.TxId.Deserialize(buf); err != nil {
 		return errors.Wrap(err, "txid")
 	}
@@ -216,6 +245,11 @@ func (r *Relationship) Deserialize(buf *bytes.Reader) error {
 }
 
 func (rs Relationships) Serialize(buf *bytes.Buffer) error {
+	// Version
+	if err := binary.Write(buf, binary.LittleEndian, uint8(0)); err != nil {
+		return errors.Wrap(err, "version")
+	}
+
 	if err := binary.Write(buf, binary.LittleEndian, uint64(len(rs.Relationships))); err != nil {
 		return errors.Wrap(err, "relationships size")
 	}
@@ -229,6 +263,15 @@ func (rs Relationships) Serialize(buf *bytes.Buffer) error {
 }
 
 func (rs *Relationships) Deserialize(buf *bytes.Reader) error {
+	var version uint8
+	if err := binary.Read(buf, binary.LittleEndian, &version); err != nil {
+		return errors.Wrap(err, "version")
+	}
+
+	if version != 0 {
+		return fmt.Errorf("Unsupported version : %d", version)
+	}
+
 	var count uint64
 	if err := binary.Read(buf, binary.LittleEndian, &count); err != nil {
 		return errors.Wrap(err, "relationships size")
