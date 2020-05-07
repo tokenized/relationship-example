@@ -167,7 +167,7 @@ func createRelationship(t *testing.T, ctx context.Context, cfg *config.Config,
 	}
 
 	logger.Info(ctx, "Process accept *************************************************************")
-	err = sendRS.ProcessAcceptRelationship(ctx, itx, message, accept, flag)
+	_, err = sendRS.ProcessAcceptRelationship(ctx, itx, message, accept, flag)
 	if err != nil {
 		t.Fatalf("Failed to process accept : %s", err)
 	}

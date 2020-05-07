@@ -19,9 +19,22 @@ func (n *Node) HandleBlock(ctx context.Context, msgType int, block *handlers.Blo
 
 	switch msgType {
 	case handlers.ListenerMsgBlock:
-		logger.Info(ctx, "New Block (%d) : %s", block.Height, block.Hash.String())
+		if block.Height > n.blockHeight {
+			n.blockHeight = block.Height
+			logger.Info(ctx, "New Block (%d) : %s", block.Height, block.Hash.String())
+		} else {
+			logger.Info(ctx, "Refeed Block (%d) : %s", block.Height, block.Hash.String())
+		}
 	case handlers.ListenerMsgBlockRevert:
 		logger.Info(ctx, "Reverted Block (%d) : %s", block.Height, block.Hash.String())
+	}
+
+	val := n.refeedNeeded.Load()
+	refeedNeeded, ok := val.(bool)
+	if ok && refeedNeeded {
+		logger.Info(ctx, "Setting refeed blocks from %d", n.blockHeight-2)
+		n.spy.RefeedBlocksFromHeight(ctx, n.blockHeight-2)
+		n.refeedNeeded.Store(false)
 	}
 
 	return nil
@@ -31,6 +44,11 @@ func (n *Node) HandleBlock(ctx context.Context, msgType int, block *handlers.Blo
 // Return true for txs that are relevant to ensure spynode sends further notifications for that tx.
 func (n *Node) HandleTx(ctx context.Context, tx *wire.MsgTx) (bool, error) {
 	ctx = logger.ContextWithOutLogSubSystem(ctx)
+
+	t, err := n.wallet.GetTx(ctx, *tx.TxHash())
+	if err == nil && t != nil {
+		return true, nil // already have tx. this happens when reprocessing a block
+	}
 
 	for index, input := range tx.TxIn {
 		// Check for owned public keys in unlock scripts.
@@ -56,7 +74,7 @@ func (n *Node) HandleTx(ctx context.Context, tx *wire.MsgTx) (bool, error) {
 			if err := n.PreprocessTx(ctx, tx); err != nil {
 				logger.Error(ctx, "Failed preprocess : %s : %s", err, tx.TxHash().String())
 			} else {
-				n.SetTx(tx)
+				n.wallet.AddWireTx(ctx, tx)
 			}
 			return true, nil
 		}
@@ -72,7 +90,7 @@ func (n *Node) HandleTx(ctx context.Context, tx *wire.MsgTx) (bool, error) {
 			if err := n.PreprocessTx(ctx, tx); err != nil {
 				logger.Error(ctx, "Failed preprocess : %s : %s", err, tx.TxHash().String())
 			} else {
-				n.SetTx(tx)
+				n.wallet.AddWireTx(ctx, tx)
 			}
 			return true, nil
 		}
@@ -93,7 +111,7 @@ func (n *Node) HandleTx(ctx context.Context, tx *wire.MsgTx) (bool, error) {
 			if err := n.PreprocessTx(ctx, tx); err != nil {
 				logger.Error(ctx, "Failed preprocess : %s : %s", err, tx.TxHash().String())
 			} else {
-				n.SetTx(tx)
+				n.wallet.AddWireTx(ctx, tx)
 			}
 			return true, nil
 		}
@@ -108,7 +126,7 @@ func (n *Node) HandleTx(ctx context.Context, tx *wire.MsgTx) (bool, error) {
 				if err := n.PreprocessTx(ctx, tx); err != nil {
 					logger.Error(ctx, "Failed preprocess : %s : %s", err, tx.TxHash().String())
 				} else {
-					n.SetTx(tx)
+					n.wallet.AddWireTx(ctx, tx)
 				}
 				return true, nil
 			}
@@ -125,32 +143,39 @@ func (n *Node) HandleTxState(ctx context.Context, msgType int, txid bitcoin.Hash
 	switch msgType {
 	case handlers.ListenerMsgTxStateSafe:
 		logger.Info(ctx, "Tx Safe : %s", txid.String())
-		tx := n.GetTx(txid)
-		if tx != nil {
-			n.RemoveTx(txid)
-			if err := n.ProcessTx(ctx, tx); err != nil {
+		t, err := n.wallet.GetTx(ctx, txid)
+		if err != nil {
+			logger.Error(ctx, "Failed get tx : %s : %s", err, txid.String())
+		} else if t != nil {
+			if err := n.ProcessTx(ctx, t); err != nil {
 				logger.Error(ctx, "Failed to process tx : %s", err)
 				// TODO Stop the daemon
 			}
+		} else {
+			logger.Info(ctx, "Tx Safe not found : %s", txid.String())
 		}
 
 	case handlers.ListenerMsgTxStateConfirm:
 		logger.Info(ctx, "Tx Confirmed : %s", txid.String())
-		tx := n.GetTx(txid)
-		if tx != nil {
-			n.RemoveTx(txid)
-			if err := n.ProcessTx(ctx, tx); err != nil {
+		t, err := n.wallet.GetTx(ctx, txid)
+		if err != nil {
+			logger.Error(ctx, "Failed get tx : %s : %s", err, txid.String())
+		} else if t != nil {
+			if err := n.ProcessTx(ctx, t); err != nil {
 				logger.Error(ctx, "Failed to process tx : %s", err)
 				// TODO Stop the daemon
 			}
+		} else {
+			logger.Info(ctx, "Tx Confirm not found : %s", txid.String())
 		}
 
 	case handlers.ListenerMsgTxStateCancel:
 		logger.Info(ctx, "Canceling tx : %s", txid.String())
-		tx := n.GetTx(txid)
-		if tx != nil {
-			n.RemoveTx(txid)
-			if err := n.RevertTx(ctx, tx); err != nil {
+		t, err := n.wallet.GetTx(ctx, txid)
+		if err != nil {
+			logger.Error(ctx, "Failed get tx : %s : %s", err, txid.String())
+		} else if t != nil {
+			if err := n.RevertTx(ctx, t); err != nil {
 				logger.Error(ctx, "Failed to revert tx : %s", err)
 				// TODO Stop the daemon
 			}
@@ -158,10 +183,11 @@ func (n *Node) HandleTxState(ctx context.Context, msgType int, txid bitcoin.Hash
 
 	case handlers.ListenerMsgTxStateUnsafe:
 		logger.Info(ctx, "Tx Unsafe : %s", txid.String())
-		tx := n.GetTx(txid)
-		if tx != nil {
-			n.RemoveTx(txid)
-			if err := n.RevertTx(ctx, tx); err != nil {
+		t, err := n.wallet.GetTx(ctx, txid)
+		if err != nil {
+			logger.Error(ctx, "Failed get tx : %s : %s", err, txid.String())
+		} else if t != nil {
+			if err := n.RevertTx(ctx, t); err != nil {
 				logger.Error(ctx, "Failed to revert tx : %s", err)
 				// TODO Stop the daemon
 			}
@@ -169,10 +195,11 @@ func (n *Node) HandleTxState(ctx context.Context, msgType int, txid bitcoin.Hash
 
 	case handlers.ListenerMsgTxStateRevert:
 		logger.Info(ctx, "Reverting tx : %s", txid.String())
-		tx := n.GetTx(txid)
-		if tx != nil {
-			n.RemoveTx(txid)
-			if err := n.RevertTx(ctx, tx); err != nil {
+		t, err := n.wallet.GetTx(ctx, txid)
+		if err != nil {
+			logger.Error(ctx, "Failed get tx : %s : %s", err, txid.String())
+		} else if t != nil {
+			if err := n.RevertTx(ctx, t); err != nil {
 				logger.Error(ctx, "Failed to revert tx : %s", err)
 				// TODO Stop the daemon
 			}

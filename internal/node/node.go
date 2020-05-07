@@ -17,8 +17,6 @@ import (
 	"github.com/tokenized/specification/dist/golang/actions"
 	"github.com/tokenized/specification/dist/golang/protocol"
 
-	"github.com/tokenized/smart-contract/pkg/bitcoin"
-	"github.com/tokenized/smart-contract/pkg/inspector"
 	"github.com/tokenized/smart-contract/pkg/logger"
 	"github.com/tokenized/smart-contract/pkg/rpcnode"
 	"github.com/tokenized/smart-contract/pkg/spynode"
@@ -34,11 +32,13 @@ type Node struct {
 	rs          *relationships.Relationships
 	rpc         *rpcnode.RPCNode
 	spy         *spynode.Node
-	txs         map[bitcoin.Hash32]*wire.MsgTx
 	lock        sync.Mutex
 	processLock sync.Mutex
 	stop        atomic.Value
 	isInSync    atomic.Value
+
+	blockHeight  int
+	refeedNeeded atomic.Value
 
 	netListener net.Listener
 	netConns    []net.Conn
@@ -53,7 +53,6 @@ func NewNode(cfg *config.Config, masterDB *db.DB, wallet *wallet.Wallet, rpc *rp
 		wallet:   wallet,
 		rpc:      rpc,
 		spy:      spy,
-		txs:      make(map[bitcoin.Hash32]*wire.MsgTx),
 	}
 
 	var err error
@@ -63,6 +62,7 @@ func NewNode(cfg *config.Config, masterDB *db.DB, wallet *wallet.Wallet, rpc *rp
 	}
 
 	result.stop.Store(false)
+	result.refeedNeeded.Store(false)
 	spy.RegisterListener(result)
 
 	return result, nil
@@ -115,30 +115,6 @@ func (n *Node) IsInSync() bool {
 	return ok && result
 }
 
-func (n *Node) GetTx(txid bitcoin.Hash32) *wire.MsgTx {
-	n.lock.Lock()
-	tx, ok := n.txs[txid]
-	n.lock.Unlock()
-
-	if !ok {
-		tx = nil
-	}
-
-	return tx
-}
-
-func (n *Node) SetTx(tx *wire.MsgTx) {
-	n.lock.Lock()
-	n.txs[*tx.TxHash()] = tx
-	n.lock.Unlock()
-}
-
-func (n *Node) RemoveTx(txid bitcoin.Hash32) {
-	n.lock.Lock()
-	delete(n.txs, txid)
-	n.lock.Unlock()
-}
-
 func (n *Node) PreprocessTx(ctx context.Context, tx *wire.MsgTx) error {
 	n.processLock.Lock()
 	defer n.processLock.Unlock()
@@ -153,47 +129,27 @@ func (n *Node) PreprocessTx(ctx context.Context, tx *wire.MsgTx) error {
 	return nil
 }
 
-func (n *Node) ProcessTx(ctx context.Context, tx *wire.MsgTx) error {
-	_, err := n.wallet.GetTx(ctx, *tx.TxHash())
-	if err == nil {
+func (n *Node) ProcessTx(ctx context.Context, t *wallet.Transaction) error {
+	if t.Itx.IsPromoted(ctx) {
 		return nil // already processed this tx
-	} else if err != wallet.ErrNotFound {
-		return errors.Wrap(err, "get tx")
+	}
+
+	logger.Info(ctx, "Processing tx : %s", t.Itx.Hash.String())
+
+	if err := t.Itx.Promote(ctx, n.rpc); err != nil {
+		return errors.Wrap(err, "promote inspector tx")
 	}
 
 	n.processLock.Lock()
 	defer n.processLock.Unlock()
 
-	logger.Info(ctx, "Processing tx : %s", tx.TxHash().String())
-
-	if err := n.wallet.FinalizeUTXOs(ctx, tx); err != nil {
+	if err := n.wallet.FinalizeUTXOs(ctx, t.Itx.MsgTx); err != nil {
 		return errors.Wrap(err, "finalize utxos")
-	}
-
-	itx, err := inspector.NewBaseTransactionFromWire(ctx, tx)
-	if err != nil {
-		return errors.Wrap(err, "new inspector tx")
-	}
-
-	if err := itx.Setup(ctx, n.cfg.IsTest); err != nil {
-		return errors.Wrap(err, "setup inspector tx")
-	}
-
-	if err := itx.Validate(ctx); err != nil {
-		return errors.Wrap(err, "validate inspector tx")
-	}
-
-	if err := itx.Promote(ctx, n.rpc); err != nil {
-		return errors.Wrap(err, "promote inspector tx")
-	}
-
-	if err := n.wallet.AddTx(ctx, wallet.Transaction{Itx: itx}); err != nil {
-		return errors.Wrap(err, "add tx")
 	}
 
 	// Check for a flag value
 	var flag []byte
-	for _, output := range itx.MsgTx.TxOut {
+	for _, output := range t.Itx.MsgTx.TxOut {
 		f, err := protocol.DeserializeFlagOutputScript(output.PkScript)
 		if err == nil {
 			flag = f
@@ -202,8 +158,8 @@ func (n *Node) ProcessTx(ctx context.Context, tx *wire.MsgTx) error {
 	}
 
 	// Process any tokenized actions
-	for index, _ := range itx.MsgTx.TxOut {
-		action, encryptionKey, err := n.rs.DecryptAction(ctx, itx, index, flag)
+	for index, _ := range t.Itx.MsgTx.TxOut {
+		action, encryptionKey, err := n.rs.DecryptAction(ctx, t.Itx, index, flag)
 		if err != nil {
 			if errors.Cause(err) != envelope.ErrNotEnvelope {
 				logger.Info(ctx, "Failed to decrypt output : %s", err)
@@ -213,8 +169,12 @@ func (n *Node) ProcessTx(ctx context.Context, tx *wire.MsgTx) error {
 
 		switch message := action.(type) {
 		case *actions.Message:
-			if err := n.ProcessMessage(ctx, itx, index, encryptionKey, message, flag); err != nil {
+			refeed, err := n.ProcessMessage(ctx, t.Itx, index, encryptionKey, message, flag)
+			if err != nil {
 				return errors.Wrap(err, "process message")
+			}
+			if refeed {
+				n.refeedNeeded.Store(true)
 			}
 		default:
 			logger.Info(ctx, "%s actions not supported", action.Code())
@@ -224,13 +184,13 @@ func (n *Node) ProcessTx(ctx context.Context, tx *wire.MsgTx) error {
 	return nil
 }
 
-func (n *Node) RevertTx(ctx context.Context, tx *wire.MsgTx) error {
+func (n *Node) RevertTx(ctx context.Context, t *wallet.Transaction) error {
 	n.processLock.Lock()
 	defer n.processLock.Unlock()
 
-	logger.Info(ctx, "Reverting tx : %s", tx.TxHash().String())
+	logger.Info(ctx, "Reverting tx : %s", t.Itx.Hash.String())
 
-	if err := n.wallet.RevertUTXOs(ctx, tx, true); err != nil {
+	if err := n.wallet.RevertUTXOs(ctx, t.Itx.MsgTx, true); err != nil {
 		return errors.Wrap(err, "revert utxos")
 	}
 

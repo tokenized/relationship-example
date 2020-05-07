@@ -166,21 +166,21 @@ func (rs *Relationships) SendMessage(ctx context.Context, r *Relationship, messa
 }
 
 func (rs *Relationships) ProcessPrivateMessage(ctx context.Context, itx *inspector.Transaction,
-	message *actions.Message, privateMessage *messages.PrivateMessage, flag []byte) error {
+	message *actions.Message, privateMessage *messages.PrivateMessage, flag []byte) (bool, error) {
 
 	logger.Info(ctx, "Processing private message for relationship")
 
 	// Get relationship
 	r, areSender, memberIndex, err := rs.GetRelationshipForTx(ctx, itx, message, flag)
 	if err != nil {
-		return errors.Wrap(err, "get relationship")
+		return false, errors.Wrap(err, "get relationship")
 	}
 	if r == nil {
-		return ErrNotFound
+		return false, ErrNotFound
 	}
 
 	if len(message.SenderIndexes) > 1 {
-		return fmt.Errorf("More than one sender not supported : %d", len(message.SenderIndexes))
+		return false, fmt.Errorf("More than one sender not supported : %d", len(message.SenderIndexes))
 	}
 
 	if areSender {
@@ -197,5 +197,5 @@ func (rs *Relationships) ProcessPrivateMessage(ctx context.Context, itx *inspect
 		logger.Info(ctx, "Message contents : \n%s\n", js)
 	}
 
-	return nil
+	return areSender && r.EncryptionType == 1, nil
 }

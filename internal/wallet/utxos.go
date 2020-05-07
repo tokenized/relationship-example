@@ -355,10 +355,12 @@ func (w *Wallet) FinalizeUTXOs(ctx context.Context, tx *wire.MsgTx) error {
 				return errors.Wrap(err, "finalize utxo")
 			}
 
-			logger.Info(ctx, "Finalized UTXO (%d) : [%s %d %s] %s %d", utxo.UTXO.Value,
-				KeyTypeName[address.KeyType], address.KeyIndex,
-				bitcoin.NewAddressFromRawAddress(ra, w.cfg.Net).String(), utxo.UTXO.Hash.String(),
-				utxo.UTXO.Index)
+			if utxo != nil {
+				logger.Info(ctx, "Finalized UTXO (%d) : [%s %d %s] %s %d", utxo.UTXO.Value,
+					KeyTypeName[address.KeyType], address.KeyIndex,
+					bitcoin.NewAddressFromRawAddress(ra, w.cfg.Net).String(), utxo.UTXO.Hash.String(),
+					utxo.UTXO.Index)
+			}
 		}
 	}
 

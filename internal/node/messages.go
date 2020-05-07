@@ -14,23 +14,23 @@ import (
 )
 
 func (n *Node) ProcessMessage(ctx context.Context, itx *inspector.Transaction, index int,
-	encryptionKey bitcoin.Hash32, message *actions.Message, flag []byte) error {
+	encryptionKey bitcoin.Hash32, message *actions.Message, flag []byte) (bool, error) {
 
 	logger.Info(ctx, "Processing message code : %d", message.MessageCode)
 
 	p, err := messages.Deserialize(message.MessageCode, message.MessagePayload)
 	if err != nil {
-		return errors.Wrap(err, "deserialize message")
+		return false, errors.Wrap(err, "deserialize message")
 	}
 
 	switch payload := p.(type) {
 	case *messages.InitiateRelationship:
-		return n.rs.ProcessInitiateRelationship(ctx, itx, message, payload, encryptionKey)
+		return true, n.rs.ProcessInitiateRelationship(ctx, itx, message, payload, encryptionKey)
 	case *messages.AcceptRelationship:
 		return n.rs.ProcessAcceptRelationship(ctx, itx, message, payload, flag)
 	case *messages.PrivateMessage:
 		return n.rs.ProcessPrivateMessage(ctx, itx, message, payload, flag)
 	}
 
-	return nil
+	return false, nil
 }

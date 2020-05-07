@@ -56,6 +56,7 @@ func NewWallet(cfg *config.Config, keyText string) (*Wallet, error) {
 		utxos:         make(map[bitcoin.Hash32][]*UTXO),
 		addressesMap:  make(map[bitcoin.Hash20]*Address),
 		addressesList: make([][]*Address, KeyTypeCount, KeyTypeCount),
+		txs:           make(map[bitcoin.Hash32]*Transaction),
 	}
 
 	var err error
@@ -391,12 +392,12 @@ func (w *Wallet) Deserialize(buf *bytes.Reader) error {
 	}
 	w.txs = make(map[bitcoin.Hash32]*Transaction)
 	for i := uint64(0); i < count; i++ {
-		var tx Transaction
-		if err := tx.Deserialize(buf, w.cfg.IsTest); err != nil {
+		var t Transaction
+		if err := t.Deserialize(buf, w.cfg.IsTest); err != nil {
 			return errors.Wrap(err, "deserialize tx")
 		}
 
-		w.txs[*tx.Itx.Hash] = &tx
+		w.txs[*t.Itx.Hash] = &t
 	}
 
 	return nil

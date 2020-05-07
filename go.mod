@@ -11,8 +11,8 @@ require (
 	github.com/pkg/errors v0.8.1
 	github.com/spf13/cobra v0.0.5
 	github.com/tokenized/envelope v0.2.2-0.20200505050634-2337f3403f49
-	github.com/tokenized/smart-contract v0.2.3-0.20200504044834-3cf85f172027
-	github.com/tokenized/specification v0.2.3-0.20200501023240-01e15ae8f8bc
+	github.com/tokenized/smart-contract v0.2.3-0.20200507021731-03fd29fa5b10
+	github.com/tokenized/specification v0.2.3-0.20200507021905-6e47e4a34a62
 	go.opencensus.io v0.22.2
 	launchpad.net/gocheck v0.0.0-20140225173054-000000000087 // indirect
 )
