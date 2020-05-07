@@ -173,7 +173,7 @@ func (n *Node) ProcessTx(ctx context.Context, t *wallet.Transaction) error {
 			if err != nil {
 				return errors.Wrap(err, "process message")
 			}
-			if refeed {
+			if refeed && !n.IsInSync() {
 				n.refeedNeeded.Store(true)
 			}
 		default:
