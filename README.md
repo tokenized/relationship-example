@@ -44,6 +44,17 @@ Run commands in the client by running `go run cmd/client/main.go <command>`. Use
 
 # Usage
 
+## Command descriptions
+
+List - lists all of the transaction IDs for relationships that you've created
+Initiate - starts a new relationship and provides the transaction id index for all further operations
+Accept - counterpart to initiate, all parties must provide their initiation, saying that they accept
+Pending Accept - partial acceptance, providing idetity information before formal acceptance
+Message - sends message to another party, given the indexed transaction id
+Receive - prints out an address P2PK used for initiating relationships (use --r)
+
+## Instructions
+
 Setup your system as describec in "Running".
 
 Your wallet will need funding to function. Get a bitcoin address with the `receive` command. Send a small amount of bitcoin to it, like 50,000 satoshis or less.
@@ -59,6 +70,27 @@ All members should accept the relationship before sending any messages within it
 To send a message within a relationship use the command `message <initiation txid> "Message text"`. Put the text in quotes in case there are spaces so it acts as one parameter to the command line. This should also create and send a funding tx and a message tx.
 
 Messages currently only show up in the log file. Their contents are ASCII, but will be base64 encoded because it is technically a binary field. Copy the base64 text and paste into a base64 decoder to see the message text. There are many available free online.
+
+## Example usage
+
+
+### One-to-One (Sam and Curtis)
+
+1. Curtis gives Sam P2PK address (offline) via `receive`
+2. Sam runs `initiate` command with P2PK
+3. Curtis sees `initiate`, shows TX ID**
+4. Curtis runs `accept` with TX ID
+5. Sam sees `accept` with TX ID
+6. Sam runs `accept` with TX ID (redundant, but implementation detail / TODO reject?)
+7. Sam `message` command M1, TX ID** (also implementation detail)
+
+### One-to-Many (Sam, Curtis, James)
+
+1. Curtis and James gives Sam P2PK address (offline) via `receive`
+2. Sam runs `initiate` with multiple P2PKs for all parties (index tx id)
+3. Curtis and James see initiate and accept
+4. Sam runs accept
+7. Sam `message` command M1, TX ID** (also implementation detail)
 
 # Protocol
 
