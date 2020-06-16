@@ -46,12 +46,12 @@ Run commands in the client by running `go run cmd/client/main.go <command>`. Use
 
 ## Command descriptions
 
-List - lists all of the transaction IDs for relationships that you've created
-Initiate - starts a new relationship and provides the transaction id index for all further operations
-Accept - counterpart to initiate, all parties must provide their initiation, saying that they accept
-Pending Accept - partial acceptance, providing idetity information before formal acceptance
-Message - sends message to another party, given the indexed transaction id
-Receive - prints out an address P2PK used for initiating relationships (use --r)
+- **List** - lists all of the transaction IDs for relationships that you've created
+- **Initiate** - starts a new relationship and provides the transaction id index for all further operations
+- **Accept** - counterpart to initiate, all parties must provide their initiation, saying that they accept
+- **Pending** Accept - partial acceptance, providing idetity information before formal acceptance
+- **Message** - sends message to another party, given the indexed transaction id
+- **Receive** - prints out an address P2PK used for initiating relationships (use --r)
 
 ## Instructions
 
@@ -72,7 +72,6 @@ To send a message within a relationship use the command `message <initiation txi
 Messages currently only show up in the log file. Their contents are ASCII, but will be base64 encoded because it is technically a binary field. Copy the base64 text and paste into a base64 decoder to see the message text. There are many available free online.
 
 ## Example usage
-
 
 ### One-to-One (Sam and Curtis)
 
